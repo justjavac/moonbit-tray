@@ -21,7 +21,9 @@ pub struct Tray {
 /// machine.
 ///
 /// On Windows this is expected to be `true`. On other platforms, or when the
-/// required desktop runtime is unavailable, this returns `false`.
+/// required desktop runtime is unavailable, this returns `false`. This probe is
+/// side-effect free and is useful for gating UI paths that would otherwise call
+/// `create()`.
 pub fn is_supported() -> Bool {
   is_supported_ffi()
 }
@@ -30,7 +32,9 @@ pub fn is_supported() -> Bool {
 /// Validates that the native backend is available before any tray is created.
 ///
 /// Use this when an application wants to show an actionable startup error
-/// instead of deferring the failure until `create()`.
+/// instead of deferring the failure until `create()`. The error string is
+/// produced by the native backend when available, so callers can surface a
+/// platform-specific explanation to users.
 pub fn ensure_supported() -> Result[Unit, String] {
   if is_supported() {
     Ok(())
@@ -47,7 +51,9 @@ pub fn ensure_supported() -> Result[Unit, String] {
 /// - `tooltip` becomes the initial hover text when the platform supports it.
 ///
 /// The returned handle starts hidden, so callers can finish any last setup and
-/// then call `show()`.
+/// then call `show()`. Empty or whitespace-only identifiers are normalized back
+/// to `default_identifier()`, and failures include the latest native error when
+/// the backend provides one.
 pub fn create(
   identifier? : String = default_identifier(),
   icon? : String? = None,
@@ -86,7 +92,9 @@ pub fn create(
 /// Shows the tray icon and optionally replaces the tooltip in the same call.
 ///
 /// Passing `tooltip=Some(...)` is the most efficient way to update the tooltip
-/// immediately before the tray becomes visible.
+/// immediately before the tray becomes visible. The result reports the tray's
+/// visible state after the call, and invoking this on a simulated test tray
+/// updates only the MoonBit-side state.
 pub fn Tray::show(
   self : Tray,
   tooltip? : String? = None,
@@ -112,6 +120,9 @@ pub fn Tray::show(
 
 ///|
 /// Hides the tray icon while keeping the handle valid for later `show()` calls.
+///
+/// The returned boolean reflects the post-call visibility state, so successful
+/// calls resolve to `Ok(false)` whether the tray is native or simulated.
 pub fn Tray::hide(self : Tray) -> Result[Bool, String] {
   match self.ensure_alive() {
     Err(error) => Err(error)
@@ -132,7 +143,8 @@ pub fn Tray::hide(self : Tray) -> Result[Bool, String] {
 /// Replaces the current tooltip text without changing visibility.
 ///
 /// Platforms that cannot show a real tooltip may map this value to the nearest
-/// native concept available to the host desktop environment.
+/// native concept available to the host desktop environment. The returned
+/// boolean mirrors whether the tray is visible after the update.
 pub fn Tray::set_tooltip(self : Tray, tooltip : String) -> Result[Bool, String] {
   match self.ensure_alive() {
     Err(error) => Err(error)
@@ -152,6 +164,10 @@ pub fn Tray::set_tooltip(self : Tray, tooltip : String) -> Result[Bool, String] 
 ///|
 /// Changes the tray icon path or resets it to the platform default when `None`
 /// is passed.
+///
+/// This updates the stored icon preference even for simulated trays used in
+/// tests, and the returned boolean mirrors whether the tray is visible after
+/// the change.
 pub fn Tray::set_icon(self : Tray, icon : String?) -> Result[Bool, String] {
   match self.ensure_alive() {
     Err(error) => Err(error)
@@ -173,7 +189,9 @@ pub fn Tray::set_icon(self : Tray, icon : String?) -> Result[Bool, String] {
 ///
 /// Call this from long-running native applications when the host platform needs
 /// event-loop progress from the tray backend. A return value of `Ok(false)`
-/// means the backend asked to stop processing.
+/// means the backend asked to stop processing. Simulated trays always return
+/// `Ok(true)` so unit tests can exercise state transitions without a native
+/// message loop.
 pub fn Tray::pump(
   self : Tray,
   blocking? : Bool = false,
@@ -199,6 +217,9 @@ pub fn Tray::pump(
 ///|
 /// Releases the underlying native resources and turns the handle into a no-op
 /// object that rejects later operations.
+///
+/// Calling `destroy()` more than once is safe; repeated calls are ignored after
+/// the first teardown has marked the handle as destroyed.
 pub fn Tray::destroy(self : Tray) -> Unit {
   if self.destroyed {
     return ()
@@ -213,6 +234,7 @@ pub fn Tray::destroy(self : Tray) -> Unit {
 }
 
 ///|
+/// Rejects operations performed on a tray handle after it has been destroyed.
 fn Tray::ensure_alive(self : Tray) -> Result[Unit, String] {
   if self.destroyed {
     Err("tray handle has been destroyed")
@@ -222,21 +244,25 @@ fn Tray::ensure_alive(self : Tray) -> Result[Unit, String] {
 }
 
 ///|
+/// Decodes the last native state error or falls back to the provided message.
 fn Tray::state_error(_self : Tray, handle : Int64, fallback : String) -> String {
   decode_bytes(last_state_error_ffi(handle)).unwrap_or(fallback)
 }
 
 ///|
+/// Encodes UTF-8 text for calls into the native backend.
 fn encode_text(value : String) -> Bytes {
   @utf8.encode(value)
 }
 
 ///|
+/// Encodes optional text as UTF-8 bytes, using an empty payload for `None`.
 fn encode_optional_text(value : String?) -> Bytes {
   @utf8.encode(value.unwrap_or(""))
 }
 
 ///|
+/// Decodes non-empty UTF-8 byte payloads into strings.
 fn decode_bytes(bytes : Bytes) -> String? {
   if bytes.is_empty() {
     None
@@ -246,6 +272,7 @@ fn decode_bytes(bytes : Bytes) -> String? {
 }
 
 ///|
+/// Returns the sentinel handle value used for simulated or destroyed trays.
 fn zero_handle() -> Int64 {
   Int64::from_int(0)
 }

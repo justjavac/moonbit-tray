@@ -1,4 +1,5 @@
 ///|
+/// Prints the visibility result of a tray operation in a compact demo format.
 fn print_result(action : String, result : Result[Bool, String]) -> Unit {
   match result {
     Ok(visible) => println("\{action}: visible=\{visible}")
@@ -7,6 +8,7 @@ fn print_result(action : String, result : Result[Bool, String]) -> Unit {
 }
 
 ///|
+/// Runs the basic tray lifecycle example from create to destroy.
 fn main {
   match
     @tray.create(

@@ -1,4 +1,5 @@
 ///|
+/// Runs the support-check example for the current platform and backend.
 fn main {
   println("platform: \{@tray.current_platform()}")
   println("default identifier: \{@tray.default_identifier()}")

@@ -1,4 +1,5 @@
 ///|
+/// Updates the tooltip and pumps the backend once for a single demo step.
 fn update_step(tray : @tray.Tray, step : Int, tooltip : String) -> Unit {
   match tray.set_tooltip(tooltip) {
     Ok(visible) => println("step \{step}: tooltip updated, visible=\{visible}")
@@ -12,6 +13,7 @@ fn update_step(tray : @tray.Tray, step : Int, tooltip : String) -> Unit {
 }
 
 ///|
+/// Runs the application-loop example that alternates tooltip updates and pumps.
 fn main {
   let tooltips = [
     "booting tray backend", "warming up application state", "ready for user interaction",
