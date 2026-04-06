@@ -1,6 +1,4 @@
 ///|
-
-///|
 /// Builds a simulated tray value for white-box state transition tests.
 fn create_simulated_tray(
   identifier? : String = default_identifier(),

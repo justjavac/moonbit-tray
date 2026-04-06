@@ -18,9 +18,20 @@ guard @tray.is_supported() else {
 let tray = @tray.create(
   identifier="com.example.demo",
   tooltip="MoonBit tray demo",
-).unwrap()
+)
 
-ignore(tray.show())
-ignore(tray.pump())
-tray.destroy()
+match tray {
+  Ok(tray) => {
+    match tray.show() {
+      Ok(_) =>
+        match tray.pump() {
+          Ok(_) => ()
+          Err(error) => println(error)
+        }
+      Err(error) => println(error)
+    }
+    tray.destroy()
+  }
+  Err(error) => println(error)
+}
 ```

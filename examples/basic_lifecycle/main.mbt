@@ -19,8 +19,18 @@ fn main {
       println("created tray on \{@tray.current_platform()}")
       print_result("set_tooltip", tray.set_tooltip("ready to show"))
       print_result("show", tray.show())
-      for _ in 0..<5 {
-        ignore(tray.pump())
+      for step in 0..<5 {
+        match tray.pump() {
+          Ok(true) => println("pump[\{step}]: ok")
+          Ok(false) => {
+            println("pump[\{step}]: backend requested stop")
+            break
+          }
+          Err(error) => {
+            println("pump[\{step}]: failed: \{error}")
+            break
+          }
+        }
       }
       print_result("hide", tray.hide())
       tray.destroy()

@@ -1,4 +1,13 @@
 ///|
+/// Prints the visibility result of a tray operation in a compact demo format.
+fn print_result(action : String, result : Result[Bool, String]) -> Unit {
+  match result {
+    Ok(visible) => println("\{action}: visible=\{visible}")
+    Err(error) => println("\{action}: failed: \{error}")
+  }
+}
+
+///|
 /// Updates the tooltip and pumps the backend once for a single demo step.
 fn update_step(tray : @tray.Tray, step : Int, tooltip : String) -> Unit {
   match tray.set_tooltip(tooltip) {
@@ -21,11 +30,11 @@ fn main {
   match
     @tray.create(identifier="justjavac.tray.examples.loop", tooltip=tooltips[0]) {
     Ok(tray) => {
-      ignore(tray.show())
+      print_result("show", tray.show())
       for step, tooltip in tooltips {
         update_step(tray, step, tooltip)
       }
-      ignore(tray.hide())
+      print_result("hide", tray.hide())
       tray.destroy()
       println("application loop example finished")
     }
