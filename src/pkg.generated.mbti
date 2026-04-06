@@ -1,0 +1,45 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "justjavac/tray"
+
+// Values
+pub fn create(identifier? : String, icon? : String?, tooltip? : String) -> Result[Tray, String]
+
+pub fn current_platform() -> Platform
+
+pub fn default_identifier() -> String
+
+pub fn ensure_supported() -> Result[Unit, String]
+
+pub fn is_supported() -> Bool
+
+// Errors
+
+// Types and methods
+pub enum Platform {
+  Windows
+  Linux
+  MacOS
+  Unknown
+} derive(Eq, Show, ToJson)
+
+pub struct Tray {
+  mut handle : Int64
+  mut native : Bool
+  platform : Platform
+  identifier : String
+  mut icon : String?
+  mut tooltip : String
+  mut visible : Bool
+  mut destroyed : Bool
+}
+pub fn Tray::destroy(Self) -> Unit
+pub fn Tray::hide(Self) -> Result[Bool, String]
+pub fn Tray::pump(Self, blocking? : Bool) -> Result[Bool, String]
+pub fn Tray::set_icon(Self, String?) -> Result[Bool, String]
+pub fn Tray::set_tooltip(Self, String) -> Result[Bool, String]
+pub fn Tray::show(Self, tooltip? : String?) -> Result[Bool, String]
+
+// Type aliases
+
+// Traits
+
