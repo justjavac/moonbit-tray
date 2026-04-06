@@ -6,12 +6,6 @@
 
 Cross-platform native tray helpers for MoonBit.
 
-## Install
-
-```bash
-moon add justjavac/tray
-```
-
 ## Example
 
 ```mbt nocheck
@@ -28,14 +22,3 @@ ignore(tray.show())
 ignore(tray.pump())
 tray.destroy()
 ```
-
-## API
-
-- `current_platform()`
-- `is_supported()` / `ensure_supported()`
-- `create(...)`
-- `show()` / `hide()`
-- `set_tooltip(...)`
-- `set_icon(...)`
-- `pump(...)`
-- `destroy()`

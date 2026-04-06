@@ -27,7 +27,6 @@ This package supports the `native` target only.
 - Runtime support checks before you create a tray
 - Cross-platform backends for Windows, Linux, and macOS
 - No compile-time Linux or macOS GUI dependency in the package itself
-- Coverage-aware CI and Codecov badges for Windows, Linux, and macOS
 
 ## Quick Start
 
@@ -175,33 +174,6 @@ Optional native integration checks can be enabled locally:
 $env:MOONBIT_TRAY_RUN_NATIVE_TESTS = "1"
 moon test --target native --filter "native*"
 ```
-
-## Coverage and Badges
-
-CI uploads one coverage report per operating system:
-
-- `linux`
-- `macos`
-- `windows`
-
-Codecov then aggregates those uploads into the total badge shown at the top of
-this README. Badge values update only after the relevant GitHub Actions run
-finishes and Codecov processes the reports.
-
-## Development
-
-The repository follows the usual MoonBit flow:
-
-```bash
-moon check
-moon test
-moon info
-moon fmt
-```
-
-`moon info` updates the generated public interface in
-[`src/pkg.generated.mbti`](src/pkg.generated.mbti), which is useful for
-reviewing intentional API changes.
 
 ## License
 
