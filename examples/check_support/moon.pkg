@@ -1,0 +1,9 @@
+import {
+  "justjavac/tray" @tray,
+}
+
+supported_targets = "native"
+
+options(
+  "is-main": true,
+)

@@ -1,0 +1,11 @@
+{
+  "name": "justjavac/tray-examples",
+  "version": "0.1.0",
+  "preferred-target": "native",
+  "supported_targets": "native",
+  "deps": {
+    "justjavac/tray": {
+      "path": ".."
+    }
+  }
+}

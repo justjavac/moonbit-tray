@@ -1,0 +1,10 @@
+import {
+  "justjavac/tray" @tray,
+  "moonbitlang/core/env",
+}
+
+supported_targets = "native"
+
+options(
+  "is-main": true,
+)
