@@ -12,6 +12,11 @@ pub enum Platform {
 ///
 /// The value is computed by the native stub so it matches the operating system
 /// that actually builds and runs the package.
+///
+/// Use this to branch platform-specific setup code around tray creation or to
+/// surface clearer diagnostics in logs and error messages. When the backend
+/// cannot map the host operating system to a known variant, this returns
+/// `Unknown`.
 pub fn current_platform() -> Platform {
   platform_from_tag(current_platform_ffi())
 }
@@ -23,6 +28,11 @@ pub fn current_platform() -> Platform {
 /// The identifier is used as the native tray instance id on platforms that
 /// require one, and keeping it stable makes logs and diagnostics easier to
 /// follow.
+///
+/// Applications with a single tray icon can usually rely on this value as-is.
+/// Multi-tray applications may still prefer to provide their own stable,
+/// application-specific identifiers so native backends can distinguish
+/// instances consistently across runs.
 pub fn default_identifier() -> String {
   "moonbit-tray"
 }
