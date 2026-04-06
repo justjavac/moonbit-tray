@@ -6,6 +6,15 @@ fn usage(program : String) -> Unit {
 }
 
 ///|
+/// Prints the visibility result of a tray operation in a compact demo format.
+fn print_result(action : String, result : Result[Bool, String]) -> Unit {
+  match result {
+    Ok(visible) => println("\{action}: visible=\{visible}")
+    Err(error) => println("\{action}: failed: \{error}")
+  }
+}
+
+///|
 /// Runs the custom-icon example and briefly switches back to the default icon.
 fn main {
   let args = @env.args()
@@ -22,10 +31,14 @@ fn main {
     ) {
     Ok(tray) => {
       println("created tray with icon=\{icon}")
-      ignore(tray.show())
-      ignore(tray.pump())
-      ignore(tray.set_icon(None))
-      ignore(tray.hide())
+      print_result("show", tray.show())
+      match tray.pump() {
+        Ok(true) => println("pump: ok")
+        Ok(false) => println("pump: backend requested stop")
+        Err(error) => println("pump: failed: \{error}")
+      }
+      print_result("set_icon", tray.set_icon(None))
+      print_result("hide", tray.hide())
       tray.destroy()
       println("custom icon example finished")
     }

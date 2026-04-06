@@ -68,6 +68,10 @@ static void moonbit_tray_set_message(char *buffer, size_t size, const char *mess
   snprintf(buffer, size, "%s", message);
 }
 
+static void moonbit_tray_clear_message(char *buffer, size_t size) {
+  moonbit_tray_set_message(buffer, size, "");
+}
+
 static moonbit_bytes_t moonbit_tray_copy_message(const char *message) {
   int32_t len;
   moonbit_bytes_t bytes;
@@ -345,10 +349,9 @@ static int32_t moonbit_tray_linux_backend_init(void) {
     moonbit_tray_linux_backend.initialized = -1;
     return 0;
   }
-  moonbit_tray_set_message(
+  moonbit_tray_clear_message(
       moonbit_tray_support_message,
-      sizeof(moonbit_tray_support_message),
-      "");
+      sizeof(moonbit_tray_support_message));
   moonbit_tray_linux_backend.initialized = 1;
   return 1;
 }
@@ -374,7 +377,7 @@ static int32_t moonbit_tray_linux_apply_icon(
         "no AppIndicator icon setter is available");
     return 0;
   }
-  moonbit_tray_set_message(state->last_error, sizeof(state->last_error), "");
+  moonbit_tray_clear_message(state->last_error, sizeof(state->last_error));
   return 1;
 }
 
@@ -451,10 +454,9 @@ static int32_t moonbit_tray_macos_backend_init(void) {
     moonbit_tray_macos_backend.initialized = -1;
     return 0;
   }
-  moonbit_tray_set_message(
+  moonbit_tray_clear_message(
       moonbit_tray_support_message,
-      sizeof(moonbit_tray_support_message),
-      "");
+      sizeof(moonbit_tray_support_message));
   moonbit_tray_macos_backend.initialized = 1;
   return 1;
 }
@@ -597,7 +599,7 @@ static int32_t moonbit_tray_macos_apply_icon(
           button,
           "setTitle:",
           moonbit_tray_macos_string(""));
-      moonbit_tray_set_message(state->last_error, sizeof(state->last_error), "");
+      moonbit_tray_clear_message(state->last_error, sizeof(state->last_error));
       return 1;
     }
   }
@@ -606,7 +608,7 @@ static int32_t moonbit_tray_macos_apply_icon(
       button,
       "setTitle:",
       moonbit_tray_macos_string("Tray"));
-  moonbit_tray_set_message(state->last_error, sizeof(state->last_error), "");
+  moonbit_tray_clear_message(state->last_error, sizeof(state->last_error));
   return 1;
 }
 
@@ -714,8 +716,10 @@ MOONBIT_FFI_EXPORT int64_t moonbit_tray_create(
     free(state);
     return 0;
   }
-  moonbit_tray_set_message(state->last_error, sizeof(state->last_error), "");
-  moonbit_tray_set_message(moonbit_tray_create_error, sizeof(moonbit_tray_create_error), "");
+  moonbit_tray_clear_message(state->last_error, sizeof(state->last_error));
+  moonbit_tray_clear_message(
+      moonbit_tray_create_error,
+      sizeof(moonbit_tray_create_error));
   return moonbit_tray_to_handle(state);
 #elif defined(__linux__)
   if (!moonbit_tray_linux_backend_init()) {
@@ -774,8 +778,10 @@ MOONBIT_FFI_EXPORT int64_t moonbit_tray_create(
     return 0;
   }
   moonbit_tray_linux_apply_tooltip(state, tooltip);
-  moonbit_tray_set_message(state->last_error, sizeof(state->last_error), "");
-  moonbit_tray_set_message(moonbit_tray_create_error, sizeof(moonbit_tray_create_error), "");
+  moonbit_tray_clear_message(state->last_error, sizeof(state->last_error));
+  moonbit_tray_clear_message(
+      moonbit_tray_create_error,
+      sizeof(moonbit_tray_create_error));
   return moonbit_tray_to_handle(state);
 #elif defined(__APPLE__)
   if (!moonbit_tray_macos_backend_init()) {
@@ -848,8 +854,10 @@ MOONBIT_FFI_EXPORT int64_t moonbit_tray_create(
       state->status_item,
       "setVisible:",
       (moonbit_tray_bool)0);
-  moonbit_tray_set_message(state->last_error, sizeof(state->last_error), "");
-  moonbit_tray_set_message(moonbit_tray_create_error, sizeof(moonbit_tray_create_error), "");
+  moonbit_tray_clear_message(state->last_error, sizeof(state->last_error));
+  moonbit_tray_clear_message(
+      moonbit_tray_create_error,
+      sizeof(moonbit_tray_create_error));
   return moonbit_tray_to_handle(state);
 #else
   moonbit_tray_set_message(
@@ -912,10 +920,10 @@ MOONBIT_FFI_EXPORT int32_t moonbit_tray_show(
     int64_t handle,
     moonbit_bytes_t tooltip) {
   moonbit_tray_state_t *state = moonbit_tray_from_handle(handle);
-#ifdef _WIN32
   if (state == NULL) {
     return 0;
   }
+#ifdef _WIN32
   moonbit_tray_copy_tooltip(state, tooltip);
   if (state->visible) {
     if (!Shell_NotifyIconW(NIM_MODIFY, &state->icon_data)) {
@@ -929,7 +937,7 @@ MOONBIT_FFI_EXPORT int32_t moonbit_tray_show(
     return 0;
   }
   state->visible = 1;
-  moonbit_tray_set_message(state->last_error, sizeof(state->last_error), "");
+  moonbit_tray_clear_message(state->last_error, sizeof(state->last_error));
   return 1;
 #elif defined(__linux__)
   moonbit_tray_linux_apply_tooltip(state, tooltip);
@@ -937,7 +945,7 @@ MOONBIT_FFI_EXPORT int32_t moonbit_tray_show(
       state->indicator,
       MOONBIT_TRAY_APPINDICATOR_STATUS_ACTIVE);
   state->visible = 1;
-  moonbit_tray_set_message(state->last_error, sizeof(state->last_error), "");
+  moonbit_tray_clear_message(state->last_error, sizeof(state->last_error));
   return 1;
 #elif defined(__APPLE__)
   moonbit_tray_macos_apply_tooltip(state, tooltip);
@@ -946,7 +954,7 @@ MOONBIT_FFI_EXPORT int32_t moonbit_tray_show(
       "setVisible:",
       (moonbit_tray_bool)1);
   state->visible = 1;
-  moonbit_tray_set_message(state->last_error, sizeof(state->last_error), "");
+  moonbit_tray_clear_message(state->last_error, sizeof(state->last_error));
   return 1;
 #else
   (void)tooltip;
@@ -956,10 +964,10 @@ MOONBIT_FFI_EXPORT int32_t moonbit_tray_show(
 
 MOONBIT_FFI_EXPORT int32_t moonbit_tray_hide(int64_t handle) {
   moonbit_tray_state_t *state = moonbit_tray_from_handle(handle);
-#ifdef _WIN32
   if (state == NULL) {
     return 0;
   }
+#ifdef _WIN32
   if (!state->visible) {
     return 1;
   }
@@ -968,14 +976,14 @@ MOONBIT_FFI_EXPORT int32_t moonbit_tray_hide(int64_t handle) {
     return 0;
   }
   state->visible = 0;
-  moonbit_tray_set_message(state->last_error, sizeof(state->last_error), "");
+  moonbit_tray_clear_message(state->last_error, sizeof(state->last_error));
   return 1;
 #elif defined(__linux__)
   moonbit_tray_linux_backend.app_indicator_set_status(
       state->indicator,
       MOONBIT_TRAY_APPINDICATOR_STATUS_PASSIVE);
   state->visible = 0;
-  moonbit_tray_set_message(state->last_error, sizeof(state->last_error), "");
+  moonbit_tray_clear_message(state->last_error, sizeof(state->last_error));
   return 1;
 #elif defined(__APPLE__)
   moonbit_tray_macos_send_void_bool(
@@ -983,7 +991,7 @@ MOONBIT_FFI_EXPORT int32_t moonbit_tray_hide(int64_t handle) {
       "setVisible:",
       (moonbit_tray_bool)0);
   state->visible = 0;
-  moonbit_tray_set_message(state->last_error, sizeof(state->last_error), "");
+  moonbit_tray_clear_message(state->last_error, sizeof(state->last_error));
   return 1;
 #else
   return 0;
@@ -994,28 +1002,28 @@ MOONBIT_FFI_EXPORT int32_t moonbit_tray_set_tooltip(
     int64_t handle,
     moonbit_bytes_t tooltip) {
   moonbit_tray_state_t *state = moonbit_tray_from_handle(handle);
-#ifdef _WIN32
   if (state == NULL) {
     return 0;
   }
+#ifdef _WIN32
   moonbit_tray_copy_tooltip(state, tooltip);
   if (!state->visible) {
-    moonbit_tray_set_message(state->last_error, sizeof(state->last_error), "");
+    moonbit_tray_clear_message(state->last_error, sizeof(state->last_error));
     return 1;
   }
   if (!Shell_NotifyIconW(NIM_MODIFY, &state->icon_data)) {
     moonbit_tray_set_message(state->last_error, sizeof(state->last_error), "Shell_NotifyIconW(NIM_MODIFY) failed");
     return 0;
   }
-  moonbit_tray_set_message(state->last_error, sizeof(state->last_error), "");
+  moonbit_tray_clear_message(state->last_error, sizeof(state->last_error));
   return 1;
 #elif defined(__linux__)
   moonbit_tray_linux_apply_tooltip(state, tooltip);
-  moonbit_tray_set_message(state->last_error, sizeof(state->last_error), "");
+  moonbit_tray_clear_message(state->last_error, sizeof(state->last_error));
   return 1;
 #elif defined(__APPLE__)
   moonbit_tray_macos_apply_tooltip(state, tooltip);
-  moonbit_tray_set_message(state->last_error, sizeof(state->last_error), "");
+  moonbit_tray_clear_message(state->last_error, sizeof(state->last_error));
   return 1;
 #else
   (void)tooltip;
@@ -1027,22 +1035,22 @@ MOONBIT_FFI_EXPORT int32_t moonbit_tray_set_icon(
     int64_t handle,
     moonbit_bytes_t icon) {
   moonbit_tray_state_t *state = moonbit_tray_from_handle(handle);
-#ifdef _WIN32
   if (state == NULL) {
     return 0;
   }
+#ifdef _WIN32
   if (!moonbit_tray_replace_icon(state, icon)) {
     return 0;
   }
   if (!state->visible) {
-    moonbit_tray_set_message(state->last_error, sizeof(state->last_error), "");
+    moonbit_tray_clear_message(state->last_error, sizeof(state->last_error));
     return 1;
   }
   if (!Shell_NotifyIconW(NIM_MODIFY, &state->icon_data)) {
     moonbit_tray_set_message(state->last_error, sizeof(state->last_error), "Shell_NotifyIconW(NIM_MODIFY) failed");
     return 0;
   }
-  moonbit_tray_set_message(state->last_error, sizeof(state->last_error), "");
+  moonbit_tray_clear_message(state->last_error, sizeof(state->last_error));
   return 1;
 #elif defined(__linux__)
   return moonbit_tray_linux_apply_icon(state, icon);
@@ -1058,10 +1066,12 @@ MOONBIT_FFI_EXPORT int32_t moonbit_tray_pump(
     int64_t handle,
     int32_t blocking) {
   moonbit_tray_state_t *state = moonbit_tray_from_handle(handle);
+  if (state == NULL) {
+    return -1;
+  }
 #ifdef _WIN32
   MSG message;
   BOOL has_message;
-  (void)state;
   if (blocking) {
     has_message = GetMessageW(&message, NULL, 0, 0);
     if (has_message <= 0) {
