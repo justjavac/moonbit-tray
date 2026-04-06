@@ -1,0 +1,77 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: ${{ matrix.coverage_flag }}
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+      id-token: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            coverage_flag: linux
+            coverage_file: coverage.linux.xml
+          - os: macos-latest
+            coverage_flag: macos
+            coverage_file: coverage.macos.xml
+          - os: windows-latest
+            coverage_flag: windows
+            coverage_file: coverage.windows.xml
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Set up MoonBit on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          irm https://cli.moonbitlang.com/install/powershell.ps1 | iex
+          "$env:USERPROFILE\.moon\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
+      - name: Set up MoonBit on Unix
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash
+          echo "$HOME/.moon/bin" >> "$GITHUB_PATH"
+
+      - name: Show MoonBit version
+        run: moon version --all
+
+      - name: Update dependencies
+        run: moon update
+
+      - name: Check package
+        run: moon check
+
+      - name: Run tests with coverage
+        run: moon test --target native --enable-coverage
+
+      - name: Verify generated files are current
+        run: |
+          moon info
+          moon fmt
+          git diff --exit-code
+
+      - name: Build Cobertura report
+        run: moon coverage analyze -p justjavac/tray -- -f cobertura -o ${{ matrix.coverage_file }}
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          use_oidc: true
+          disable_search: true
+          files: ./${{ matrix.coverage_file }}
+          flags: ${{ matrix.coverage_flag }}
+          name: ${{ matrix.coverage_flag }}-native

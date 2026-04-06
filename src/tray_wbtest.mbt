@@ -52,6 +52,29 @@ test "show can replace the tooltip inline" {
 }
 
 ///|
+test "native hidden operations stay usable when backend is available" {
+  if is_supported() {
+    let tray = match
+      create(identifier="justjavac.tray.test", tooltip="hidden") {
+      Ok(tray) => tray
+      Err(error) => fail(error)
+    }
+    inspect(
+      (tray.native, tray.visible, tray.destroyed),
+      content="(true, false, false)",
+    )
+    inspect(tray.set_tooltip("hidden updated"), content="Ok(false)")
+    inspect(tray.set_icon(None), content="Ok(false)")
+    inspect(tray.hide(), content="Ok(false)")
+    inspect(tray.pump(), content="Ok(true)")
+    tray.destroy()
+    inspect((tray.native, tray.destroyed), content="(false, true)")
+  } else {
+    inspect("unsupported", content="unsupported")
+  }
+}
+
+///|
 test "destroy prevents later operations" {
   let tray = create_simulated_tray(platform=Linux)
   tray.destroy()

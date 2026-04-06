@@ -2,3 +2,5 @@
 _build/
 .mooncakes/
 .moonagent/
+coverage.*.xml
+uncovered.log
