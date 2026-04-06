@@ -28,6 +28,7 @@ pub fn default_identifier() -> String {
 }
 
 ///|
+/// Maps the native platform tag to the public `Platform` enum.
 fn platform_from_tag(tag : Int) -> Platform {
   match tag {
     1 => Windows
@@ -38,6 +39,7 @@ fn platform_from_tag(tag : Int) -> Platform {
 }
 
 ///|
+/// Decodes the support-probe failure message or falls back to a generic error.
 fn support_error_message() -> String {
   decode_bytes(support_error_ffi()).unwrap_or(
     "tray is not supported on this platform",
@@ -45,6 +47,7 @@ fn support_error_message() -> String {
 }
 
 ///|
+/// Trims user input and replaces an empty identifier with the default value.
 fn normalize_identifier(identifier : String) -> String {
   let trimmed = identifier.trim().to_string()
   if trimmed.is_empty() {
