@@ -6,7 +6,7 @@ fn create_simulated_tray(
   tooltip? : String = "",
   platform? : Platform = current_platform(),
 ) -> Tray {
-  Tray::{
+  {
     handle: zero_handle(),
     native: false,
     platform,
@@ -32,22 +32,22 @@ test "simulated tray lifecycle updates visible state" {
     tooltip="initial",
     platform=Windows,
   )
-  inspect((tray.visible, tray.tooltip), content="(false, \"initial\")")
-  inspect(tray.show(), content="Ok(true)")
-  inspect((tray.visible, tray.tooltip), content="(true, \"initial\")")
-  inspect(tray.set_tooltip("updated"), content="Ok(true)")
-  inspect((tray.visible, tray.tooltip), content="(true, \"updated\")")
-  inspect(tray.set_icon(None), content="Ok(true)")
-  inspect((tray.visible, tray.icon), content="(true, None)")
-  inspect(tray.hide(), content="Ok(false)")
+  debug_inspect((tray.visible, tray.tooltip), content="(false, \"initial\")")
+  debug_inspect(tray.show(), content="Ok(true)")
+  debug_inspect((tray.visible, tray.tooltip), content="(true, \"initial\")")
+  debug_inspect(tray.set_tooltip("updated"), content="Ok(true)")
+  debug_inspect((tray.visible, tray.tooltip), content="(true, \"updated\")")
+  debug_inspect(tray.set_icon(None), content="Ok(true)")
+  debug_inspect((tray.visible, tray.icon), content="(true, None)")
+  debug_inspect(tray.hide(), content="Ok(false)")
   inspect(tray.visible, content="false")
 }
 
 ///|
 test "show can replace the tooltip inline" {
   let tray = create_simulated_tray(tooltip="before", platform=MacOS)
-  inspect(tray.show(tooltip=Some("after")), content="Ok(true)")
-  inspect((tray.tooltip, tray.visible), content="(\"after\", true)")
+  debug_inspect(tray.show(tooltip=Some("after")), content="Ok(true)")
+  debug_inspect((tray.tooltip, tray.visible), content="(\"after\", true)")
 }
 
 ///|
@@ -58,16 +58,16 @@ test "native hidden operations stay usable when backend is available" {
       Ok(tray) => tray
       Err(error) => fail(error)
     }
-    inspect(
+    debug_inspect(
       (tray.native, tray.visible, tray.destroyed),
       content="(true, false, false)",
     )
-    inspect(tray.set_tooltip("hidden updated"), content="Ok(false)")
-    inspect(tray.set_icon(None), content="Ok(false)")
-    inspect(tray.hide(), content="Ok(false)")
-    inspect(tray.pump(), content="Ok(true)")
+    debug_inspect(tray.set_tooltip("hidden updated"), content="Ok(false)")
+    debug_inspect(tray.set_icon(None), content="Ok(false)")
+    debug_inspect(tray.hide(), content="Ok(false)")
+    debug_inspect(tray.pump(), content="Ok(true)")
     tray.destroy()
-    inspect((tray.native, tray.destroyed), content="(false, true)")
+    debug_inspect((tray.native, tray.destroyed), content="(false, true)")
   } else {
     inspect("unsupported", content="unsupported")
   }
@@ -77,16 +77,16 @@ test "native hidden operations stay usable when backend is available" {
 test "destroy prevents later operations" {
   let tray = create_simulated_tray(platform=Linux)
   tray.destroy()
-  inspect((tray.visible, tray.destroyed), content="(false, true)")
-  inspect(tray.show(), content="Err(\"tray handle has been destroyed\")")
-  inspect(tray.hide(), content="Err(\"tray handle has been destroyed\")")
-  inspect(
+  debug_inspect((tray.visible, tray.destroyed), content="(false, true)")
+  debug_inspect(tray.show(), content="Err(\"tray handle has been destroyed\")")
+  debug_inspect(tray.hide(), content="Err(\"tray handle has been destroyed\")")
+  debug_inspect(
     tray.set_tooltip("ignored"),
     content="Err(\"tray handle has been destroyed\")",
   )
-  inspect(
+  debug_inspect(
     tray.set_icon(Some("icon.png")),
     content="Err(\"tray handle has been destroyed\")",
   )
-  inspect(tray.pump(), content="Err(\"tray handle has been destroyed\")")
+  debug_inspect(tray.pump(), content="Err(\"tray handle has been destroyed\")")
 }

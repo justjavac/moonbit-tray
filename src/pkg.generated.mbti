@@ -1,6 +1,10 @@
 // Generated using `moon info`, DON'T EDIT IT
 package "justjavac/tray"
 
+import {
+  "moonbitlang/core/debug",
+}
+
 // Values
 pub fn create(identifier? : String, icon? : String?, tooltip? : String) -> Result[Tray, String]
 
@@ -20,7 +24,8 @@ pub enum Platform {
   Linux
   MacOS
   Unknown
-} derive(Eq, Show, ToJson)
+} derive(Eq, ToJson, @debug.Debug)
+pub impl Show for Platform
 
 pub struct Tray {
   mut handle : Int64

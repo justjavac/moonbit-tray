@@ -4,7 +4,19 @@ pub enum Platform {
   Linux
   MacOS
   Unknown
-} derive(Show, Eq, ToJson)
+} derive(Debug, Eq, ToJson)
+
+///|
+pub impl Show for Platform with fn output(self, logger) {
+  logger.write_string(
+    match self {
+      Windows => "Windows"
+      Linux => "Linux"
+      MacOS => "MacOS"
+      Unknown => "Unknown"
+    },
+  )
+}
 
 ///|
 /// Returns the desktop platform detected by the native backend for the current
@@ -59,7 +71,7 @@ fn support_error_message() -> String {
 ///|
 /// Trims user input and replaces an empty identifier with the default value.
 fn normalize_identifier(identifier : String) -> String {
-  let trimmed = identifier.trim().to_string()
+  let trimmed = identifier.trim().to_owned()
   if trimmed.is_empty() {
     default_identifier()
   } else {

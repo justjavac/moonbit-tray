@@ -86,7 +86,7 @@ pub fn create(
           decode_bytes(last_create_error_ffi()).unwrap_or("tray.create failed"),
         )
       } else {
-        Ok(Tray::{
+        Ok({
           handle,
           native: true,
           platform: current_platform(),
