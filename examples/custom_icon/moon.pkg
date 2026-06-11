@@ -1,5 +1,5 @@
 import {
-  "justjavac/tray" @tray,
+  "justjavac/tray",
   "moonbitlang/core/env",
 }
 
