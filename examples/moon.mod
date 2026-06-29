@@ -1,6 +1,6 @@
 name = "justjavac/tray-examples"
 
-version = "0.1.0"
+version = "0.1.1"
 
 import {
   "justjavac/tray@0.1.6",
