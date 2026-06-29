@@ -28,6 +28,13 @@ pub struct Tray {
 /// This function answers only whether tray support appears available right now;
 /// it does not allocate a tray handle or make one visible. If you need a human
 /// readable explanation for a `false` result, call `ensure_supported()` instead.
+///
+/// # Example
+/// ```mbt check
+/// test "is_supported probes capability without creating a tray" {
+///   let _ : Bool = is_supported()
+/// }
+/// ```
 pub fn is_supported() -> Bool {
   is_supported_ffi()
 }
@@ -67,6 +74,14 @@ pub fn ensure_supported() -> Result[Unit, String] {
 /// hidden, updated, pumped, and eventually destroyed. On failure this returns
 /// `Err(message)` with either the support-probe failure or the most recent
 /// backend creation error.
+///
+/// # Example
+/// ```mbt nocheck
+/// let tray = @tray.create(icon=Some("/path/to/icon.png"), tooltip="My App").unwrap()
+/// let _ = tray.show()
+/// // ... run the application event loop, calling `tray.pump()` as needed ...
+/// tray.destroy()
+/// ```
 pub fn create(
   identifier? : String = default_identifier(),
   icon? : String? = None,

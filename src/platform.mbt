@@ -1,4 +1,11 @@
 ///|
+/// Desktop platform reported by the native tray backend.
+///
+/// `Windows`, `Linux`, and `MacOS` identify a backend this package knows how to
+/// drive. `Unknown` is returned when the native stub cannot map the host
+/// operating system to a supported variant, which typically also means tray
+/// creation will fail. Use this to branch platform-specific setup or to enrich
+/// diagnostics; the value is derived from `current_platform()`.
 pub enum Platform {
   Windows
   Linux
@@ -7,6 +14,7 @@ pub enum Platform {
 } derive(Debug, Eq, ToJson)
 
 ///|
+/// Renders a `Platform` as its capitalized backend name.
 pub impl Show for Platform with fn output(self, logger) {
   logger.write_string(
     match self {
