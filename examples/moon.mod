@@ -3,7 +3,7 @@ name = "justjavac/tray-examples"
 version = "0.1.0"
 
 import {
-  "justjavac/tray@0.1.5",
+  "justjavac/tray@0.1.6",
 }
 
 repository = "https://github.com/justjavac/moonbit-tray/tree/main/examples"
