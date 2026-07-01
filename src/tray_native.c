@@ -21,10 +21,31 @@
 
 #include "moonbit.h"
 
+#define MOONBIT_TRAY_MAX_EVENTS 32
+#define MOONBIT_TRAY_MAX_EVENT_BYTES 1024
+#define MOONBIT_TRAY_MAX_MENU_ITEMS 64
+#define MOONBIT_TRAY_MAX_MENU_ID_BYTES 128
+#define MOONBIT_TRAY_MAX_MENU_DEPTH 8
+
+#ifdef _WIN32
+#define MOONBIT_TRAY_CALLBACK_MESSAGE (WM_APP + 1)
+#define MOONBIT_TRAY_COMMAND_BASE 0x7000
+#endif
+
 typedef struct moonbit_tray_state {
 #ifdef _WIN32
   HWND hwnd;
   NOTIFYICONDATAW icon_data;
+  int32_t icon_owned;
+  HMENU menu;
+  HMENU pending_menu;
+  HMENU menu_stack[MOONBIT_TRAY_MAX_MENU_DEPTH + 1];
+  uint32_t menu_depth;
+  char menu_item_ids[MOONBIT_TRAY_MAX_MENU_ITEMS][MOONBIT_TRAY_MAX_MENU_ID_BYTES];
+  uint32_t menu_item_count;
+  char pending_menu_item_ids[MOONBIT_TRAY_MAX_MENU_ITEMS]
+                            [MOONBIT_TRAY_MAX_MENU_ID_BYTES];
+  uint32_t pending_menu_item_count;
 #elif defined(__linux__)
   void *indicator;
   void *menu;
@@ -36,6 +57,9 @@ typedef struct moonbit_tray_state {
   void *button;
 #endif
   int32_t visible;
+  char events[MOONBIT_TRAY_MAX_EVENTS][MOONBIT_TRAY_MAX_EVENT_BYTES];
+  uint32_t event_head;
+  uint32_t event_count;
   char last_error[256];
 } moonbit_tray_state_t;
 
@@ -86,26 +110,210 @@ static moonbit_bytes_t moonbit_tray_copy_message(const char *message) {
   return bytes;
 }
 
+static int32_t moonbit_tray_enqueue_event(
+    moonbit_tray_state_t *state,
+    const char *event_json) {
+  if (state == NULL || event_json == NULL) {
+    return 0;
+  }
+  size_t len = strlen(event_json);
+  if (len >= MOONBIT_TRAY_MAX_EVENT_BYTES) {
+    return 0;
+  }
+  if (state->event_count >= MOONBIT_TRAY_MAX_EVENTS) {
+    state->events[state->event_head][0] = '\0';
+    state->event_head = (state->event_head + 1) % MOONBIT_TRAY_MAX_EVENTS;
+    state->event_count--;
+  }
+  uint32_t index =
+      (state->event_head + state->event_count) % MOONBIT_TRAY_MAX_EVENTS;
+  memcpy(state->events[index], event_json, len + 1);
+  state->event_count++;
+  return 1;
+}
+
+static int32_t moonbit_tray_json_escape_string(
+    char *out,
+    size_t out_len,
+    const char *value) {
+  size_t written = 0;
+  if (out == NULL || out_len == 0 || value == NULL) {
+    return 0;
+  }
+  for (const unsigned char *cursor = (const unsigned char *)value;
+       *cursor != '\0';
+       cursor++) {
+    char escaped[8];
+    const char *chunk = escaped;
+    switch (*cursor) {
+    case '"':
+      chunk = "\\\"";
+      break;
+    case '\\':
+      chunk = "\\\\";
+      break;
+    case '\b':
+      chunk = "\\b";
+      break;
+    case '\f':
+      chunk = "\\f";
+      break;
+    case '\n':
+      chunk = "\\n";
+      break;
+    case '\r':
+      chunk = "\\r";
+      break;
+    case '\t':
+      chunk = "\\t";
+      break;
+    default:
+      if (*cursor < 0x20) {
+        snprintf(escaped, sizeof(escaped), "\\u%04x", *cursor);
+      } else {
+        escaped[0] = (char)*cursor;
+        escaped[1] = '\0';
+      }
+      break;
+    }
+    size_t chunk_len = strlen(chunk);
+    if (written + chunk_len >= out_len) {
+      return 0;
+    }
+    memcpy(out + written, chunk, chunk_len);
+    written += chunk_len;
+  }
+  out[written] = '\0';
+  return 1;
+}
+
+static int32_t moonbit_tray_enqueue_menu_event(
+    moonbit_tray_state_t *state,
+    const char *item_id) {
+  char escaped[MOONBIT_TRAY_MAX_MENU_ID_BYTES * 6];
+  char event_json[MOONBIT_TRAY_MAX_EVENT_BYTES];
+  if (!moonbit_tray_json_escape_string(escaped, sizeof(escaped), item_id)) {
+    return 0;
+  }
+  int written = snprintf(
+      event_json,
+      sizeof(event_json),
+      "{\"type\":\"menuItemClick\",\"item_id\":\"%s\"}",
+      escaped);
+  if (written < 0 || written >= (int)sizeof(event_json)) {
+    return 0;
+  }
+  return moonbit_tray_enqueue_event(state, event_json);
+}
+
 #ifdef _WIN32
 static ATOM moonbit_tray_window_class = 0;
+
+static void moonbit_tray_win_destroy_menu(moonbit_tray_state_t *state) {
+  if (state == NULL) {
+    return;
+  }
+  if (state->menu != NULL) {
+    DestroyMenu(state->menu);
+    state->menu = NULL;
+  }
+  state->menu_item_count = 0;
+  memset(state->menu_item_ids, 0, sizeof(state->menu_item_ids));
+}
+
+static void moonbit_tray_win_destroy_pending_menu(moonbit_tray_state_t *state) {
+  if (state == NULL) {
+    return;
+  }
+  if (state->pending_menu != NULL) {
+    DestroyMenu(state->pending_menu);
+    state->pending_menu = NULL;
+  }
+  state->menu_depth = 0;
+  state->pending_menu_item_count = 0;
+  memset(state->menu_stack, 0, sizeof(state->menu_stack));
+  memset(state->pending_menu_item_ids, 0, sizeof(state->pending_menu_item_ids));
+}
+
+static HMENU moonbit_tray_win_current_pending_menu(
+    moonbit_tray_state_t *state) {
+  if (state == NULL || state->pending_menu == NULL ||
+      state->menu_depth == 0) {
+    return NULL;
+  }
+  return state->menu_stack[state->menu_depth - 1];
+}
+
+static uint32_t moonbit_tray_win_command_index(uint32_t command_id) {
+  if (command_id < MOONBIT_TRAY_COMMAND_BASE) {
+    return UINT32_MAX;
+  }
+  return command_id - MOONBIT_TRAY_COMMAND_BASE;
+}
+
+static void moonbit_tray_win_show_menu(moonbit_tray_state_t *state) {
+  if (state == NULL || state->menu == NULL) {
+    return;
+  }
+  POINT cursor;
+  if (!GetCursorPos(&cursor)) {
+    return;
+  }
+  SetForegroundWindow(state->hwnd);
+  TrackPopupMenu(
+      state->menu,
+      TPM_RIGHTBUTTON | TPM_BOTTOMALIGN | TPM_LEFTALIGN,
+      cursor.x,
+      cursor.y,
+      0,
+      state->hwnd,
+      NULL);
+  PostMessageW(state->hwnd, WM_NULL, 0, 0);
+}
 
 static LRESULT CALLBACK moonbit_tray_window_proc(
     HWND hwnd,
     UINT message,
     WPARAM w_param,
     LPARAM l_param) {
-  (void)w_param;
-  (void)l_param;
+  moonbit_tray_state_t *state =
+      (moonbit_tray_state_t *)GetWindowLongPtrW(hwnd, GWLP_USERDATA);
+  if (message == MOONBIT_TRAY_CALLBACK_MESSAGE && state != NULL) {
+    switch ((UINT)l_param) {
+    case WM_LBUTTONUP:
+      moonbit_tray_enqueue_event(state, "{\"type\":\"click\"}");
+      return 0;
+    case WM_RBUTTONUP:
+      moonbit_tray_enqueue_event(state, "{\"type\":\"rightClick\"}");
+      moonbit_tray_win_show_menu(state);
+      return 0;
+    case WM_LBUTTONDBLCLK:
+      moonbit_tray_enqueue_event(state, "{\"type\":\"doubleClick\"}");
+      return 0;
+    default:
+      return 0;
+    }
+  }
   switch (message) {
+  case WM_COMMAND:
+    if (state != NULL) {
+      uint32_t index = moonbit_tray_win_command_index(LOWORD(w_param));
+      if (index < state->menu_item_count) {
+        moonbit_tray_enqueue_menu_event(state, state->menu_item_ids[index]);
+        return 0;
+      }
+    }
+    break;
   case WM_CLOSE:
     DestroyWindow(hwnd);
     return 0;
   case WM_DESTROY:
-    PostQuitMessage(0);
+    SetWindowLongPtrW(hwnd, GWLP_USERDATA, (LONG_PTR)NULL);
     return 0;
   default:
     return DefWindowProcW(hwnd, message, w_param, l_param);
   }
+  return DefWindowProcW(hwnd, message, w_param, l_param);
 }
 
 static int32_t moonbit_tray_ensure_window_class(void) {
@@ -122,8 +330,7 @@ static int32_t moonbit_tray_ensure_window_class(void) {
   return moonbit_tray_window_class != 0;
 }
 
-static wchar_t *moonbit_tray_utf8_to_wide(moonbit_bytes_t value) {
-  const char *text = (const char *)value;
+static wchar_t *moonbit_tray_utf8_cstr_to_wide(const char *text) {
   int32_t units;
   wchar_t *wide;
   if (text == NULL || text[0] == '\0') {
@@ -144,22 +351,31 @@ static wchar_t *moonbit_tray_utf8_to_wide(moonbit_bytes_t value) {
   return wide;
 }
 
+static wchar_t *moonbit_tray_utf8_to_wide(moonbit_bytes_t value) {
+  return moonbit_tray_utf8_cstr_to_wide((const char *)value);
+}
+
 static void moonbit_tray_copy_tooltip(
-    moonbit_tray_state_t *state,
+    NOTIFYICONDATAW *icon_data,
     moonbit_bytes_t tooltip) {
   wchar_t *wide = moonbit_tray_utf8_to_wide(tooltip);
   if (wide == NULL) {
-    state->icon_data.szTip[0] = L'\0';
+    icon_data->szTip[0] = L'\0';
     return;
   }
-  wcsncpy(state->icon_data.szTip, wide, 127);
-  state->icon_data.szTip[127] = L'\0';
+  wcsncpy(icon_data->szTip, wide, 127);
+  icon_data->szTip[127] = L'\0';
   free(wide);
 }
 
-static HICON moonbit_tray_load_icon(moonbit_bytes_t icon) {
+static HICON moonbit_tray_load_icon(
+    moonbit_bytes_t icon,
+    int32_t *owned) {
   wchar_t *path = moonbit_tray_utf8_to_wide(icon);
   HICON loaded = NULL;
+  if (owned != NULL) {
+    *owned = 0;
+  }
   if (path != NULL) {
     loaded = (HICON)LoadImageW(
         NULL,
@@ -168,8 +384,14 @@ static HICON moonbit_tray_load_icon(moonbit_bytes_t icon) {
         0,
         0,
         LR_DEFAULTSIZE | LR_LOADFROMFILE);
+    if (loaded != NULL && owned != NULL) {
+      *owned = 1;
+    }
     if (loaded == NULL) {
       ExtractIconExW(path, 0, NULL, &loaded, 1);
+      if (loaded != NULL && owned != NULL) {
+        *owned = 1;
+      }
     }
     free(path);
   }
@@ -179,19 +401,262 @@ static HICON moonbit_tray_load_icon(moonbit_bytes_t icon) {
   return loaded;
 }
 
+static void moonbit_tray_destroy_icon_if_owned(
+    HICON icon,
+    int32_t owned) {
+  if (owned && icon != NULL) {
+    DestroyIcon(icon);
+  }
+}
+
+static void moonbit_tray_commit_icon(
+    moonbit_tray_state_t *state,
+    HICON next_icon,
+    int32_t next_icon_owned) {
+  HICON old_icon = state->icon_data.hIcon;
+  int32_t old_icon_owned = state->icon_owned;
+  state->icon_data.hIcon = next_icon;
+  state->icon_owned = next_icon_owned;
+  state->icon_data.uFlags = NIF_ICON | NIF_MESSAGE | NIF_TIP;
+  if (old_icon != next_icon) {
+    moonbit_tray_destroy_icon_if_owned(old_icon, old_icon_owned);
+  }
+}
+
 static int32_t moonbit_tray_replace_icon(
     moonbit_tray_state_t *state,
     moonbit_bytes_t icon) {
-  HICON next_icon = moonbit_tray_load_icon(icon);
+  int32_t next_icon_owned = 0;
+  HICON next_icon = moonbit_tray_load_icon(icon, &next_icon_owned);
   if (next_icon == NULL) {
     moonbit_tray_set_message(state->last_error, sizeof(state->last_error), "failed to load tray icon");
     return 0;
   }
-  if (state->icon_data.hIcon != NULL && state->icon_data.hIcon != next_icon) {
-    DestroyIcon(state->icon_data.hIcon);
+  moonbit_tray_commit_icon(state, next_icon, next_icon_owned);
+  return 1;
+}
+
+static int32_t moonbit_tray_win_append_clickable_menu_item(
+    moonbit_tray_state_t *state,
+    moonbit_bytes_t id_bytes,
+    moonbit_bytes_t label_bytes,
+    int32_t enabled,
+    int32_t checked) {
+  HMENU menu = moonbit_tray_win_current_pending_menu(state);
+  const char *id = (const char *)id_bytes;
+  const char *label = (const char *)label_bytes;
+  wchar_t *wide_label;
+  uint32_t index;
+  UINT flags = MF_STRING;
+  UINT_PTR command_id;
+  if (menu == NULL) {
+    moonbit_tray_set_message(
+        state->last_error,
+        sizeof(state->last_error),
+        "tray menu transaction is not active");
+    return 0;
   }
-  state->icon_data.hIcon = next_icon;
-  state->icon_data.uFlags = NIF_ICON | NIF_MESSAGE | NIF_TIP;
+  if (state->pending_menu_item_count >= MOONBIT_TRAY_MAX_MENU_ITEMS) {
+    moonbit_tray_set_message(
+        state->last_error,
+        sizeof(state->last_error),
+        "tray menu has too many clickable items");
+    return 0;
+  }
+  if (id == NULL || id[0] == '\0' || label == NULL || label[0] == '\0') {
+    moonbit_tray_set_message(
+        state->last_error,
+        sizeof(state->last_error),
+        "tray menu clickable items require id and label");
+    return 0;
+  }
+  if (strlen(id) >= sizeof(state->pending_menu_item_ids[0])) {
+    moonbit_tray_set_message(
+        state->last_error,
+        sizeof(state->last_error),
+        "tray menu item id is too long");
+    return 0;
+  }
+  wide_label = moonbit_tray_utf8_cstr_to_wide(label);
+  if (wide_label == NULL) {
+    moonbit_tray_set_message(
+        state->last_error,
+        sizeof(state->last_error),
+        "failed to convert tray menu label");
+    return 0;
+  }
+  index = state->pending_menu_item_count;
+  if (!enabled) {
+    flags |= MF_GRAYED;
+  }
+  if (checked) {
+    flags |= MF_CHECKED;
+  }
+  command_id = (UINT_PTR)(MOONBIT_TRAY_COMMAND_BASE + index);
+  if (!AppendMenuW(menu, flags, command_id, wide_label)) {
+    free(wide_label);
+    moonbit_tray_set_message(
+        state->last_error,
+        sizeof(state->last_error),
+        "failed to append tray menu item");
+    return 0;
+  }
+  free(wide_label);
+  snprintf(
+      state->pending_menu_item_ids[index],
+      sizeof(state->pending_menu_item_ids[index]),
+      "%s",
+      id);
+  state->pending_menu_item_count++;
+  return 1;
+}
+
+static int32_t moonbit_tray_win_begin_menu(moonbit_tray_state_t *state) {
+  if (state == NULL) {
+    return 0;
+  }
+  moonbit_tray_win_destroy_pending_menu(state);
+  state->pending_menu = CreatePopupMenu();
+  if (state->pending_menu == NULL) {
+    moonbit_tray_set_message(
+        state->last_error,
+        sizeof(state->last_error),
+        "failed to create tray popup menu");
+    return 0;
+  }
+  state->menu_stack[0] = state->pending_menu;
+  state->menu_depth = 1;
+  state->pending_menu_item_count = 0;
+  memset(state->pending_menu_item_ids, 0, sizeof(state->pending_menu_item_ids));
+  moonbit_tray_clear_message(state->last_error, sizeof(state->last_error));
+  return 1;
+}
+
+static int32_t moonbit_tray_win_add_separator(moonbit_tray_state_t *state) {
+  HMENU menu = moonbit_tray_win_current_pending_menu(state);
+  if (menu == NULL) {
+    moonbit_tray_set_message(
+        state->last_error,
+        sizeof(state->last_error),
+        "tray menu transaction is not active");
+    return 0;
+  }
+  if (!AppendMenuW(menu, MF_SEPARATOR, 0, NULL)) {
+    moonbit_tray_set_message(
+        state->last_error,
+        sizeof(state->last_error),
+        "failed to append tray menu separator");
+    return 0;
+  }
+  return 1;
+}
+
+static int32_t moonbit_tray_win_begin_submenu(
+    moonbit_tray_state_t *state,
+    moonbit_bytes_t label_bytes,
+    int32_t enabled) {
+  HMENU parent = moonbit_tray_win_current_pending_menu(state);
+  HMENU submenu;
+  const char *label = (const char *)label_bytes;
+  wchar_t *wide_label;
+  UINT flags = MF_POPUP;
+  if (parent == NULL) {
+    moonbit_tray_set_message(
+        state->last_error,
+        sizeof(state->last_error),
+        "tray menu transaction is not active");
+    return 0;
+  }
+  if (state->menu_depth > MOONBIT_TRAY_MAX_MENU_DEPTH) {
+    moonbit_tray_set_message(
+        state->last_error,
+        sizeof(state->last_error),
+        "tray menu submenu depth exceeds 8");
+    return 0;
+  }
+  if (label == NULL || label[0] == '\0') {
+    moonbit_tray_set_message(
+        state->last_error,
+        sizeof(state->last_error),
+        "tray submenu label must not be empty");
+    return 0;
+  }
+  wide_label = moonbit_tray_utf8_cstr_to_wide(label);
+  if (wide_label == NULL) {
+    moonbit_tray_set_message(
+        state->last_error,
+        sizeof(state->last_error),
+        "failed to convert tray submenu label");
+    return 0;
+  }
+  submenu = CreatePopupMenu();
+  if (submenu == NULL) {
+    free(wide_label);
+    moonbit_tray_set_message(
+        state->last_error,
+        sizeof(state->last_error),
+        "failed to create tray submenu");
+    return 0;
+  }
+  if (!enabled) {
+    flags |= MF_GRAYED;
+  }
+  if (!AppendMenuW(parent, flags, (UINT_PTR)submenu, wide_label)) {
+    DestroyMenu(submenu);
+    free(wide_label);
+    moonbit_tray_set_message(
+        state->last_error,
+        sizeof(state->last_error),
+        "failed to append tray submenu");
+    return 0;
+  }
+  free(wide_label);
+  state->menu_stack[state->menu_depth] = submenu;
+  state->menu_depth++;
+  return 1;
+}
+
+static int32_t moonbit_tray_win_end_submenu(moonbit_tray_state_t *state) {
+  if (state == NULL || state->pending_menu == NULL || state->menu_depth <= 1) {
+    moonbit_tray_set_message(
+        state->last_error,
+        sizeof(state->last_error),
+        "tray submenu transaction is not active");
+    return 0;
+  }
+  state->menu_depth--;
+  state->menu_stack[state->menu_depth] = NULL;
+  return 1;
+}
+
+static int32_t moonbit_tray_win_commit_menu(moonbit_tray_state_t *state) {
+  HMENU old_menu;
+  if (state == NULL || state->pending_menu == NULL) {
+    return 0;
+  }
+  if (state->menu_depth != 1) {
+    moonbit_tray_set_message(
+        state->last_error,
+        sizeof(state->last_error),
+        "tray submenu transaction is still open");
+    return 0;
+  }
+  old_menu = state->menu;
+  state->menu = state->pending_menu;
+  state->pending_menu = NULL;
+  state->menu_item_count = state->pending_menu_item_count;
+  memcpy(
+      state->menu_item_ids,
+      state->pending_menu_item_ids,
+      sizeof(state->menu_item_ids));
+  state->pending_menu_item_count = 0;
+  memset(state->pending_menu_item_ids, 0, sizeof(state->pending_menu_item_ids));
+  memset(state->menu_stack, 0, sizeof(state->menu_stack));
+  state->menu_depth = 0;
+  if (old_menu != NULL) {
+    DestroyMenu(old_menu);
+  }
+  moonbit_tray_clear_message(state->last_error, sizeof(state->last_error));
   return 1;
 }
 #endif
@@ -581,6 +1046,7 @@ static int32_t moonbit_tray_macos_apply_icon(
   }
   if (icon_text != NULL && icon_text[0] != '\0') {
     moonbit_tray_id path = moonbit_tray_macos_string(icon_text);
+    int32_t image_owned = 1;
     moonbit_tray_id image = moonbit_tray_macos_send_id_id(
         moonbit_tray_macos_send_id(
             moonbit_tray_macos_class("NSImage"),
@@ -588,6 +1054,7 @@ static int32_t moonbit_tray_macos_apply_icon(
         "initWithContentsOfFile:",
         path);
     if (image == NULL) {
+      image_owned = 0;
       image = moonbit_tray_macos_send_id_id(
           moonbit_tray_macos_class("NSImage"),
           "imageNamed:",
@@ -595,6 +1062,9 @@ static int32_t moonbit_tray_macos_apply_icon(
     }
     if (image != NULL) {
       moonbit_tray_macos_send_void_id(button, "setImage:", image);
+      if (image_owned) {
+        moonbit_tray_macos_send_void(image, "release");
+      }
       moonbit_tray_macos_send_void_id(
           button,
           "setTitle:",
@@ -622,6 +1092,26 @@ static void moonbit_tray_macos_apply_tooltip(
         button,
         "setToolTip:",
         moonbit_tray_macos_string((const char *)tooltip));
+  }
+}
+
+static void moonbit_tray_macos_release_state(moonbit_tray_state_t *state) {
+  if (state == NULL) {
+    return;
+  }
+  if (state->status_item != NULL) {
+    if (state->status_bar != NULL) {
+      moonbit_tray_macos_send_void_id(
+          state->status_bar,
+          "removeStatusItem:",
+          state->status_item);
+    }
+    moonbit_tray_macos_send_void(state->status_item, "release");
+    state->status_item = NULL;
+  }
+  if (state->pool != NULL) {
+    moonbit_tray_macos_send_void(state->pool, "drain");
+    state->pool = NULL;
   }
 }
 #endif
@@ -700,13 +1190,14 @@ MOONBIT_FFI_EXPORT int64_t moonbit_tray_create(
     free(state);
     return 0;
   }
+  SetWindowLongPtrW(state->hwnd, GWLP_USERDATA, (LONG_PTR)state);
   memset(&state->icon_data, 0, sizeof(state->icon_data));
   state->icon_data.cbSize = sizeof(state->icon_data);
   state->icon_data.hWnd = state->hwnd;
   state->icon_data.uID = 0x6D42;
   state->icon_data.uFlags = NIF_ICON | NIF_MESSAGE | NIF_TIP;
-  state->icon_data.uCallbackMessage = WM_APP + 1;
-  moonbit_tray_copy_tooltip(state, tooltip);
+  state->icon_data.uCallbackMessage = MOONBIT_TRAY_CALLBACK_MESSAGE;
+  moonbit_tray_copy_tooltip(&state->icon_data, tooltip);
   if (!moonbit_tray_replace_icon(state, icon)) {
     moonbit_tray_set_message(
         moonbit_tray_create_error,
@@ -824,6 +1315,7 @@ MOONBIT_FFI_EXPORT int64_t moonbit_tray_create(
         moonbit_tray_create_error,
         sizeof(moonbit_tray_create_error),
         "failed to create the NSStatusItem");
+    moonbit_tray_macos_release_state(state);
     free(state);
     return 0;
   }
@@ -842,10 +1334,7 @@ MOONBIT_FFI_EXPORT int64_t moonbit_tray_create(
         moonbit_tray_create_error,
         sizeof(moonbit_tray_create_error),
         state->last_error);
-    moonbit_tray_macos_send_void_id(
-        state->status_bar,
-        "removeStatusItem:",
-        state->status_item);
+    moonbit_tray_macos_release_state(state);
     free(state);
     return 0;
   }
@@ -881,7 +1370,9 @@ MOONBIT_FFI_EXPORT void moonbit_tray_destroy(int64_t handle) {
   if (state->visible) {
     Shell_NotifyIconW(NIM_DELETE, &state->icon_data);
   }
-  if (state->icon_data.hIcon != NULL) {
+  moonbit_tray_win_destroy_pending_menu(state);
+  moonbit_tray_win_destroy_menu(state);
+  if (state->icon_owned && state->icon_data.hIcon != NULL) {
     DestroyIcon(state->icon_data.hIcon);
   }
   if (state->hwnd != NULL) {
@@ -902,16 +1393,7 @@ MOONBIT_FFI_EXPORT void moonbit_tray_destroy(int64_t handle) {
     }
   }
 #elif defined(__APPLE__)
-  if (state->status_item != NULL && state->status_bar != NULL) {
-    moonbit_tray_macos_send_void_id(
-        state->status_bar,
-        "removeStatusItem:",
-        state->status_item);
-    moonbit_tray_macos_send_void(state->status_item, "release");
-  }
-  if (state->pool != NULL) {
-    moonbit_tray_macos_send_void(state->pool, "drain");
-  }
+  moonbit_tray_macos_release_state(state);
 #endif
   free(state);
 }
@@ -924,18 +1406,22 @@ MOONBIT_FFI_EXPORT int32_t moonbit_tray_show(
     return 0;
   }
 #ifdef _WIN32
-  moonbit_tray_copy_tooltip(state, tooltip);
+  NOTIFYICONDATAW next_icon_data = state->icon_data;
+  moonbit_tray_copy_tooltip(&next_icon_data, tooltip);
   if (state->visible) {
-    if (!Shell_NotifyIconW(NIM_MODIFY, &state->icon_data)) {
+    if (!Shell_NotifyIconW(NIM_MODIFY, &next_icon_data)) {
       moonbit_tray_set_message(state->last_error, sizeof(state->last_error), "Shell_NotifyIconW(NIM_MODIFY) failed");
       return 0;
     }
+    state->icon_data = next_icon_data;
+    moonbit_tray_clear_message(state->last_error, sizeof(state->last_error));
     return 1;
   }
-  if (!Shell_NotifyIconW(NIM_ADD, &state->icon_data)) {
+  if (!Shell_NotifyIconW(NIM_ADD, &next_icon_data)) {
     moonbit_tray_set_message(state->last_error, sizeof(state->last_error), "Shell_NotifyIconW(NIM_ADD) failed");
     return 0;
   }
+  state->icon_data = next_icon_data;
   state->visible = 1;
   moonbit_tray_clear_message(state->last_error, sizeof(state->last_error));
   return 1;
@@ -969,6 +1455,7 @@ MOONBIT_FFI_EXPORT int32_t moonbit_tray_hide(int64_t handle) {
   }
 #ifdef _WIN32
   if (!state->visible) {
+    moonbit_tray_clear_message(state->last_error, sizeof(state->last_error));
     return 1;
   }
   if (!Shell_NotifyIconW(NIM_DELETE, &state->icon_data)) {
@@ -1006,15 +1493,18 @@ MOONBIT_FFI_EXPORT int32_t moonbit_tray_set_tooltip(
     return 0;
   }
 #ifdef _WIN32
-  moonbit_tray_copy_tooltip(state, tooltip);
   if (!state->visible) {
+    moonbit_tray_copy_tooltip(&state->icon_data, tooltip);
     moonbit_tray_clear_message(state->last_error, sizeof(state->last_error));
     return 1;
   }
-  if (!Shell_NotifyIconW(NIM_MODIFY, &state->icon_data)) {
+  NOTIFYICONDATAW next_icon_data = state->icon_data;
+  moonbit_tray_copy_tooltip(&next_icon_data, tooltip);
+  if (!Shell_NotifyIconW(NIM_MODIFY, &next_icon_data)) {
     moonbit_tray_set_message(state->last_error, sizeof(state->last_error), "Shell_NotifyIconW(NIM_MODIFY) failed");
     return 0;
   }
+  state->icon_data = next_icon_data;
   moonbit_tray_clear_message(state->last_error, sizeof(state->last_error));
   return 1;
 #elif defined(__linux__)
@@ -1039,17 +1529,30 @@ MOONBIT_FFI_EXPORT int32_t moonbit_tray_set_icon(
     return 0;
   }
 #ifdef _WIN32
-  if (!moonbit_tray_replace_icon(state, icon)) {
-    return 0;
-  }
   if (!state->visible) {
+    if (!moonbit_tray_replace_icon(state, icon)) {
+      return 0;
+    }
     moonbit_tray_clear_message(state->last_error, sizeof(state->last_error));
     return 1;
   }
-  if (!Shell_NotifyIconW(NIM_MODIFY, &state->icon_data)) {
+  int32_t next_icon_owned = 0;
+  HICON next_icon = moonbit_tray_load_icon(icon, &next_icon_owned);
+  if (next_icon == NULL) {
+    moonbit_tray_set_message(state->last_error, sizeof(state->last_error), "failed to load tray icon");
+    return 0;
+  }
+  NOTIFYICONDATAW next_icon_data = state->icon_data;
+  next_icon_data.hIcon = next_icon;
+  next_icon_data.uFlags = NIF_ICON | NIF_MESSAGE | NIF_TIP;
+  if (!Shell_NotifyIconW(NIM_MODIFY, &next_icon_data)) {
+    if (next_icon != state->icon_data.hIcon) {
+      moonbit_tray_destroy_icon_if_owned(next_icon, next_icon_owned);
+    }
     moonbit_tray_set_message(state->last_error, sizeof(state->last_error), "Shell_NotifyIconW(NIM_MODIFY) failed");
     return 0;
   }
+  moonbit_tray_commit_icon(state, next_icon, next_icon_owned);
   moonbit_tray_clear_message(state->last_error, sizeof(state->last_error));
   return 1;
 #elif defined(__linux__)
@@ -1059,6 +1562,173 @@ MOONBIT_FFI_EXPORT int32_t moonbit_tray_set_icon(
 #else
   (void)icon;
   return 0;
+#endif
+}
+
+MOONBIT_FFI_EXPORT int32_t moonbit_tray_menu_begin(int64_t handle) {
+  moonbit_tray_state_t *state = moonbit_tray_from_handle(handle);
+  if (state == NULL) {
+    return 0;
+  }
+#ifdef _WIN32
+  return moonbit_tray_win_begin_menu(state);
+#elif defined(__linux__)
+  moonbit_tray_set_message(
+      state->last_error,
+      sizeof(state->last_error),
+      "tray menu is unsupported on Linux in v1");
+  return 0;
+#elif defined(__APPLE__)
+  moonbit_tray_set_message(
+      state->last_error,
+      sizeof(state->last_error),
+      "tray menu is unsupported on macOS in v1");
+  return 0;
+#else
+  moonbit_tray_set_message(
+      state->last_error,
+      sizeof(state->last_error),
+      "tray menu is unsupported on this platform");
+  return 0;
+#endif
+}
+
+MOONBIT_FFI_EXPORT int32_t moonbit_tray_menu_add_normal(
+    int64_t handle,
+    moonbit_bytes_t id,
+    moonbit_bytes_t label,
+    int32_t enabled) {
+  moonbit_tray_state_t *state = moonbit_tray_from_handle(handle);
+  if (state == NULL) {
+    return 0;
+  }
+#ifdef _WIN32
+  return moonbit_tray_win_append_clickable_menu_item(
+      state,
+      id,
+      label,
+      enabled,
+      0);
+#else
+  (void)id;
+  (void)label;
+  (void)enabled;
+  moonbit_tray_set_message(
+      state->last_error,
+      sizeof(state->last_error),
+      "tray menu transaction is not active");
+  return 0;
+#endif
+}
+
+MOONBIT_FFI_EXPORT int32_t moonbit_tray_menu_add_checkbox(
+    int64_t handle,
+    moonbit_bytes_t id,
+    moonbit_bytes_t label,
+    int32_t enabled,
+    int32_t checked) {
+  moonbit_tray_state_t *state = moonbit_tray_from_handle(handle);
+  if (state == NULL) {
+    return 0;
+  }
+#ifdef _WIN32
+  return moonbit_tray_win_append_clickable_menu_item(
+      state,
+      id,
+      label,
+      enabled,
+      checked);
+#else
+  (void)id;
+  (void)label;
+  (void)enabled;
+  (void)checked;
+  moonbit_tray_set_message(
+      state->last_error,
+      sizeof(state->last_error),
+      "tray menu transaction is not active");
+  return 0;
+#endif
+}
+
+MOONBIT_FFI_EXPORT int32_t moonbit_tray_menu_add_separator(int64_t handle) {
+  moonbit_tray_state_t *state = moonbit_tray_from_handle(handle);
+  if (state == NULL) {
+    return 0;
+  }
+#ifdef _WIN32
+  return moonbit_tray_win_add_separator(state);
+#else
+  moonbit_tray_set_message(
+      state->last_error,
+      sizeof(state->last_error),
+      "tray menu transaction is not active");
+  return 0;
+#endif
+}
+
+MOONBIT_FFI_EXPORT int32_t moonbit_tray_menu_begin_submenu(
+    int64_t handle,
+    moonbit_bytes_t label,
+    int32_t enabled) {
+  moonbit_tray_state_t *state = moonbit_tray_from_handle(handle);
+  if (state == NULL) {
+    return 0;
+  }
+#ifdef _WIN32
+  return moonbit_tray_win_begin_submenu(state, label, enabled);
+#else
+  (void)label;
+  (void)enabled;
+  moonbit_tray_set_message(
+      state->last_error,
+      sizeof(state->last_error),
+      "tray menu transaction is not active");
+  return 0;
+#endif
+}
+
+MOONBIT_FFI_EXPORT int32_t moonbit_tray_menu_end_submenu(int64_t handle) {
+  moonbit_tray_state_t *state = moonbit_tray_from_handle(handle);
+  if (state == NULL) {
+    return 0;
+  }
+#ifdef _WIN32
+  return moonbit_tray_win_end_submenu(state);
+#else
+  moonbit_tray_set_message(
+      state->last_error,
+      sizeof(state->last_error),
+      "tray menu transaction is not active");
+  return 0;
+#endif
+}
+
+MOONBIT_FFI_EXPORT int32_t moonbit_tray_menu_commit(int64_t handle) {
+  moonbit_tray_state_t *state = moonbit_tray_from_handle(handle);
+  if (state == NULL) {
+    return 0;
+  }
+#ifdef _WIN32
+  return moonbit_tray_win_commit_menu(state);
+#else
+  moonbit_tray_set_message(
+      state->last_error,
+      sizeof(state->last_error),
+      "tray menu transaction is not active");
+  return 0;
+#endif
+}
+
+MOONBIT_FFI_EXPORT void moonbit_tray_menu_abort(int64_t handle) {
+  moonbit_tray_state_t *state = moonbit_tray_from_handle(handle);
+  if (state == NULL) {
+    return;
+  }
+#ifdef _WIN32
+  moonbit_tray_win_destroy_pending_menu(state);
+#else
+  (void)state;
 #endif
 }
 
@@ -1115,6 +1785,20 @@ MOONBIT_FFI_EXPORT int32_t moonbit_tray_pump(
   (void)blocking;
   return -1;
 #endif
+}
+
+MOONBIT_FFI_EXPORT moonbit_bytes_t moonbit_tray_poll_event_json(
+    int64_t handle) {
+  moonbit_tray_state_t *state = moonbit_tray_from_handle(handle);
+  if (state == NULL || state->event_count == 0) {
+    return moonbit_tray_copy_message("");
+  }
+  const char *event_json = state->events[state->event_head];
+  moonbit_bytes_t result = moonbit_tray_copy_message(event_json);
+  state->events[state->event_head][0] = '\0';
+  state->event_head = (state->event_head + 1) % MOONBIT_TRAY_MAX_EVENTS;
+  state->event_count--;
+  return result;
 }
 
 MOONBIT_FFI_EXPORT moonbit_bytes_t moonbit_tray_last_error(

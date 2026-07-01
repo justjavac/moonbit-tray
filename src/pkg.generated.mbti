@@ -28,21 +28,50 @@ pub enum Platform {
 pub impl Show for Platform
 
 pub struct Tray {
-  mut handle : Int64
-  mut native : Bool
-  platform : Platform
-  identifier : String
-  mut icon : String?
-  mut tooltip : String
-  mut visible : Bool
-  mut destroyed : Bool
+  // private fields
 }
 pub fn Tray::destroy(Self) -> Unit
+pub fn Tray::drain_events(Self) -> Array[TrayEvent]
 pub fn Tray::hide(Self) -> Result[Bool, String]
+pub fn Tray::icon(Self) -> String?
+pub fn Tray::identifier(Self) -> String
+pub fn Tray::is_visible(Self) -> Bool
+pub fn Tray::menu_items(Self) -> Array[TrayMenuItem]
+pub fn Tray::platform(Self) -> Platform
 pub fn Tray::pump(Self, blocking? : Bool) -> Result[Bool, String]
 pub fn Tray::set_icon(Self, String?) -> Result[Bool, String]
+pub fn Tray::set_menu(Self, Array[TrayMenuItem]) -> Result[Bool, String]
 pub fn Tray::set_tooltip(Self, String) -> Result[Bool, String]
 pub fn Tray::show(Self, tooltip? : String?) -> Result[Bool, String]
+pub fn Tray::tooltip(Self) -> String
+
+pub(all) enum TrayEvent {
+  Click
+  RightClick
+  DoubleClick
+  MenuItemClick(String)
+} derive(Eq, @debug.Debug)
+pub fn TrayEvent::event_name(Self) -> String
+pub fn TrayEvent::item_id(Self) -> String?
+
+pub(all) enum TrayMenuItem {
+  Normal(id~ : String, label~ : String, enabled~ : Bool)
+  Separator
+  Checkbox(id~ : String, label~ : String, checked~ : Bool, enabled~ : Bool)
+  Submenu(label~ : String, items~ : Array[TrayMenuItem], enabled~ : Bool)
+} derive(Eq, @debug.Debug)
+pub fn TrayMenuItem::checkbox(id~ : String, label~ : String, checked? : Bool, enabled? : Bool) -> Self
+pub fn TrayMenuItem::kind(Self) -> TrayMenuItemKind
+pub fn TrayMenuItem::normal(id~ : String, label~ : String, enabled? : Bool) -> Self
+pub fn TrayMenuItem::separator() -> Self
+pub fn TrayMenuItem::submenu(label~ : String, items~ : Array[Self], enabled? : Bool) -> Self
+
+pub(all) enum TrayMenuItemKind {
+  Normal
+  Separator
+  Checkbox
+  Submenu
+} derive(Eq, @debug.Debug)
 
 // Type aliases
 
