@@ -269,6 +269,42 @@ test "native macos custom icon path stays usable" {
 }
 
 ///|
+test "linux missing icon path returns an error" {
+  if is_supported() && current_platform() == Linux {
+    match
+      create(
+        identifier="justjavac.tray.test.missing-icon",
+        icon=Some(
+          "/tmp/moonbit-tray-missing-icon-7f324d1f85b741a99b2c-does-not-exist.png",
+        ),
+        tooltip="missing icon",
+      ) {
+      Ok(tray) => {
+        tray.destroy()
+        fail("expected missing Linux icon path to fail")
+      }
+      Err(error) => inspect(error, content="tray icon file is not readable")
+    }
+    match
+      create(
+        identifier="justjavac.tray.test.missing-relative-icon",
+        icon=Some(
+          "moonbit-tray-missing-icon-7f324d1f85b741a99b2c-does-not-exist.png",
+        ),
+        tooltip="missing relative icon",
+      ) {
+      Ok(tray) => {
+        tray.destroy()
+        fail("expected missing Linux relative icon path to fail")
+      }
+      Err(error) => inspect(error, content="tray icon file is not readable")
+    }
+  } else {
+    inspect("skipped", content="skipped")
+  }
+}
+
+///|
 test "destroy prevents later operations" {
   let tray = create_simulated_tray(platform=Linux)
   tray.destroy()

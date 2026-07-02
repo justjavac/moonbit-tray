@@ -13,6 +13,8 @@
 #endif
 #elif defined(__linux__)
 #include <dlfcn.h>
+#include <sys/stat.h>
+#include <unistd.h>
 #elif defined(__APPLE__)
 #include <dlfcn.h>
 #include <limits.h>
@@ -757,6 +759,7 @@ typedef struct moonbit_tray_linux_backend {
   void (*app_indicator_set_menu)(void *, void *);
   void (*app_indicator_set_icon)(void *, const char *);
   void (*app_indicator_set_icon_full)(void *, const char *, const char *);
+  void (*app_indicator_set_icon_theme_path)(void *, const char *);
   void (*app_indicator_set_title)(void *, const char *);
 } moonbit_tray_linux_backend_t;
 
@@ -772,6 +775,9 @@ static int32_t moonbit_tray_linux_open_library(
     const char *const *names,
     void **out_handle) {
   const char *const *name = names;
+  if (*out_handle != NULL) {
+    return 1;
+  }
   for (; *name != NULL; ++name) {
     *out_handle = dlopen(*name, RTLD_LAZY | RTLD_GLOBAL);
     if (*out_handle != NULL) {
@@ -825,7 +831,7 @@ static int32_t moonbit_tray_linux_backend_init(void) {
         moonbit_tray_support_message,
         sizeof(moonbit_tray_support_message),
         "GTK 3 runtime not found (expected libgtk-3)");
-    moonbit_tray_linux_backend.initialized = -1;
+    moonbit_tray_linux_backend.initialized = 0;
     return 0;
   }
   if (!moonbit_tray_linux_open_library(
@@ -835,7 +841,7 @@ static int32_t moonbit_tray_linux_backend_init(void) {
         moonbit_tray_support_message,
         sizeof(moonbit_tray_support_message),
         "AppIndicator runtime not found (expected libayatana-appindicator3 or libappindicator3)");
-    moonbit_tray_linux_backend.initialized = -1;
+    moonbit_tray_linux_backend.initialized = 0;
     return 0;
   }
   if (!moonbit_tray_linux_load_symbol(
@@ -868,7 +874,7 @@ static int32_t moonbit_tray_linux_backend_init(void) {
           moonbit_tray_linux_backend.indicator_lib,
           "app_indicator_set_menu",
           1)) {
-    moonbit_tray_linux_backend.initialized = -1;
+    moonbit_tray_linux_backend.initialized = 0;
     return 0;
   }
   moonbit_tray_linux_load_symbol(
@@ -882,6 +888,11 @@ static int32_t moonbit_tray_linux_backend_init(void) {
       "app_indicator_set_icon",
       0);
   moonbit_tray_linux_load_symbol(
+      (void **)&moonbit_tray_linux_backend.app_indicator_set_icon_theme_path,
+      moonbit_tray_linux_backend.indicator_lib,
+      "app_indicator_set_icon_theme_path",
+      0);
+  moonbit_tray_linux_load_symbol(
       (void **)&moonbit_tray_linux_backend.app_indicator_set_title,
       moonbit_tray_linux_backend.indicator_lib,
       "app_indicator_set_title",
@@ -893,7 +904,7 @@ static int32_t moonbit_tray_linux_backend_init(void) {
         moonbit_tray_support_message,
         sizeof(moonbit_tray_support_message),
         "GTK initialization failed; make sure a desktop session is available");
-    moonbit_tray_linux_backend.initialized = -1;
+    moonbit_tray_linux_backend.initialized = 0;
     return 0;
   }
   moonbit_tray_clear_message(
@@ -903,25 +914,206 @@ static int32_t moonbit_tray_linux_backend_init(void) {
   return 1;
 }
 
+static int32_t moonbit_tray_linux_has_path_separator(const char *icon) {
+  return icon != NULL && strchr(icon, '/') != NULL;
+}
+
+static int32_t moonbit_tray_linux_is_readable_file(const char *path) {
+  struct stat file_info;
+  if (path == NULL || path[0] == '\0') {
+    return 0;
+  }
+  if (stat(path, &file_info) != 0 || !S_ISREG(file_info.st_mode)) {
+    return 0;
+  }
+  return access(path, R_OK) == 0;
+}
+
+static int32_t moonbit_tray_linux_ascii_equals_ignore_case(
+    const char *left,
+    const char *right) {
+  char left_char;
+  char right_char;
+  if (left == NULL || right == NULL) {
+    return 0;
+  }
+  while (*left != '\0' && *right != '\0') {
+    left_char = *left;
+    right_char = *right;
+    if (left_char >= 'A' && left_char <= 'Z') {
+      left_char = (char)(left_char - 'A' + 'a');
+    }
+    if (right_char >= 'A' && right_char <= 'Z') {
+      right_char = (char)(right_char - 'A' + 'a');
+    }
+    if (left_char != right_char) {
+      return 0;
+    }
+    ++left;
+    ++right;
+  }
+  return *left == '\0' && *right == '\0';
+}
+
+static int32_t moonbit_tray_linux_has_icon_file_extension(const char *icon) {
+  static const char *const extensions[] = {
+      "bmp",
+      "gif",
+      "ico",
+      "jpeg",
+      "jpg",
+      "png",
+      "svg",
+      "tif",
+      "tiff",
+      "webp",
+      "xpm",
+      NULL,
+  };
+  const char *slash;
+  const char *base;
+  const char *dot;
+  const char *const *extension;
+  if (icon == NULL || icon[0] == '\0') {
+    return 0;
+  }
+  slash = strrchr(icon, '/');
+  base = slash == NULL ? icon : slash + 1;
+  dot = strrchr(base, '.');
+  if (dot == NULL || dot == base || dot[1] == '\0') {
+    return 0;
+  }
+  for (extension = extensions; *extension != NULL; ++extension) {
+    if (moonbit_tray_linux_ascii_equals_ignore_case(dot + 1, *extension)) {
+      return 1;
+    }
+  }
+  return 0;
+}
+
+static int32_t moonbit_tray_linux_looks_like_path(
+    const char *icon,
+    int32_t is_readable_file) {
+  return icon != NULL &&
+         icon[0] != '\0' &&
+         (moonbit_tray_linux_has_path_separator(icon) ||
+          is_readable_file ||
+          moonbit_tray_linux_has_icon_file_extension(icon));
+}
+
+static char *moonbit_tray_linux_copy_range(const char *start, size_t length) {
+  char *copy = (char *)malloc(length + 1);
+  if (copy == NULL) {
+    return NULL;
+  }
+  if (length > 0) {
+    memcpy(copy, start, length);
+  }
+  copy[length] = '\0';
+  return copy;
+}
+
+static int32_t moonbit_tray_linux_split_icon_path(
+    const char *path,
+    char **out_directory,
+    char **out_icon_name) {
+  const char *slash;
+  const char *base;
+  const char *dot;
+  size_t directory_length;
+  size_t icon_name_length;
+  *out_directory = NULL;
+  *out_icon_name = NULL;
+  if (path == NULL || path[0] == '\0') {
+    return 0;
+  }
+  slash = strrchr(path, '/');
+  base = slash == NULL ? path : slash + 1;
+  if (base[0] == '\0') {
+    return 0;
+  }
+  if (slash == NULL) {
+    *out_directory = moonbit_tray_linux_copy_range(".", 1);
+  } else {
+    directory_length = slash == path ? 1 : (size_t)(slash - path);
+    *out_directory = moonbit_tray_linux_copy_range(path, directory_length);
+  }
+  if (*out_directory == NULL) {
+    return 0;
+  }
+  dot = strrchr(base, '.');
+  icon_name_length =
+      dot != NULL && dot > base ? (size_t)(dot - base) : strlen(base);
+  *out_icon_name = moonbit_tray_linux_copy_range(base, icon_name_length);
+  if (*out_icon_name == NULL) {
+    free(*out_directory);
+    *out_directory = NULL;
+    return 0;
+  }
+  return 1;
+}
+
 static int32_t moonbit_tray_linux_apply_icon(
     moonbit_tray_state_t *state,
     moonbit_bytes_t icon) {
-  const char *icon_name =
-      moonbit_tray_text_or((const char *)icon, "applications-system");
+  const char *raw_icon = (const char *)icon;
+  const char *icon_name = moonbit_tray_text_or(raw_icon, "applications-system");
+  char *icon_directory = NULL;
+  char *theme_icon_name = NULL;
+  int32_t icon_is_readable_file = moonbit_tray_linux_is_readable_file(raw_icon);
+  int32_t icon_is_path =
+      moonbit_tray_linux_looks_like_path(raw_icon, icon_is_readable_file);
+  int32_t updated = 0;
+  if (icon_is_path && !icon_is_readable_file) {
+    moonbit_tray_set_message(
+        state->last_error,
+        sizeof(state->last_error),
+        "tray icon file is not readable");
+    return 0;
+  }
+  if (icon_is_path) {
+    if (moonbit_tray_linux_backend.app_indicator_set_icon_theme_path == NULL) {
+      moonbit_tray_set_message(
+          state->last_error,
+          sizeof(state->last_error),
+          "AppIndicator icon theme path setter is unavailable");
+      return 0;
+    }
+    if (!moonbit_tray_linux_split_icon_path(
+            raw_icon,
+            &icon_directory,
+            &theme_icon_name)) {
+      moonbit_tray_set_message(
+          state->last_error,
+          sizeof(state->last_error),
+          "failed to prepare the tray icon path");
+      return 0;
+    }
+    moonbit_tray_linux_backend.app_indicator_set_icon_theme_path(
+        state->indicator,
+        icon_directory);
+    icon_name = theme_icon_name;
+  }
   if (moonbit_tray_linux_backend.app_indicator_set_icon_full != NULL) {
     moonbit_tray_linux_backend.app_indicator_set_icon_full(
         state->indicator,
         icon_name,
         "");
+    updated = 1;
   } else if (moonbit_tray_linux_backend.app_indicator_set_icon != NULL) {
     moonbit_tray_linux_backend.app_indicator_set_icon(
         state->indicator,
         icon_name);
+    updated = 1;
   } else {
     moonbit_tray_set_message(
         state->last_error,
         sizeof(state->last_error),
         "no AppIndicator icon setter is available");
+  }
+  free(icon_directory);
+  free(theme_icon_name);
+  if (!updated) {
     return 0;
   }
   moonbit_tray_clear_message(state->last_error, sizeof(state->last_error));
