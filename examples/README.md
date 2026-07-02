@@ -10,6 +10,8 @@ moon run basic_lifecycle
 moon run application_loop
 moon run custom_icon
 moon run custom_icon -- path/to/icon.png "My tray tooltip"
+moon run context_menu
+moon run click_events
 ```
 
 Included programs:
@@ -18,3 +20,5 @@ Included programs:
 - `basic_lifecycle`: create a tray, show it, hide it, and destroy it cleanly
 - `application_loop`: demonstrate how to pump the tray backend from an app loop
 - `custom_icon`: pass a custom icon path and optional tooltip from the command line
+- `context_menu`: install a nested context menu and print menu item click events
+- `click_events`: print click, right-click, double-click, and menu events

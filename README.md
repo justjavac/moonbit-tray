@@ -11,7 +11,8 @@ Cross-platform native tray helpers for MoonBit.
 
 This package focuses on a small, readable API for tray lifecycle management:
 detect support, create a tray handle, update the icon or tooltip, show or hide
-it, pump native events when needed, and destroy it cleanly.
+it, replace a context menu, drain tray/menu events, pump native events when
+needed, and destroy it cleanly.
 
 ## Install
 
@@ -25,7 +26,9 @@ This package supports the `native` target only.
 
 - A lightweight tray icon lifecycle API for MoonBit native apps
 - Runtime support checks before you create a tray
-- Cross-platform backends for Windows, Linux, and macOS
+- Windows v1 tray click, right-click, double-click, and menu item click events
+- Windows v1 context menus with normal, separator, checkbox, and submenu items
+- Cross-platform lifecycle backends for Windows, Linux, and macOS
 - No compile-time Linux or macOS GUI dependency in the package itself
 
 ## Quick Start
@@ -49,7 +52,32 @@ fn run_tray_demo() -> Unit {
   }
 
   ignore(tray.set_icon(Some("assets/tray.png")))
-  ignore(tray.show())
+  match tray.set_menu([
+    @tray.TrayMenuItem::normal(id="show", label="Show Window"),
+    @tray.TrayMenuItem::separator(),
+    @tray.TrayMenuItem::checkbox(
+      id="launch",
+      label="Launch at Login",
+      checked=true,
+    ),
+    @tray.TrayMenuItem::submenu(
+      label="More",
+      items=[
+        @tray.TrayMenuItem::normal(id="settings", label="Settings"),
+      ],
+    ),
+  ]) {
+    Ok(_) => ()
+    Err(error) => println("set_menu skipped: \{error}")
+  }
+  match tray.show() {
+    Ok(_) => ()
+    Err(error) => {
+      println("show failed: \{error}")
+      tray.destroy()
+      return
+    }
+  }
 
   loop {
     match tray.pump() {
@@ -59,6 +87,9 @@ fn run_tray_demo() -> Unit {
         println("pump failed: \{error}")
         break
       }
+    }
+    for event in tray.drain_events() {
+      println("tray event: \{event.event_name()}")
     }
   }
 
@@ -82,14 +113,39 @@ fn run_tray_demo() -> Unit {
 - `Tray::hide() -> Result[Bool, String]`
 - `Tray::set_tooltip(String) -> Result[Bool, String]`
 - `Tray::set_icon(String?) -> Result[Bool, String]`
+- `Tray::set_menu(Array[TrayMenuItem]) -> Result[Bool, String]`
+- `Tray::drain_events() -> Array[TrayEvent]`
 - `Tray::pump(blocking? : Bool) -> Result[Bool, String]`
 - `Tray::destroy() -> Unit`
+- `Tray::identifier() -> String`
+- `Tray::platform() -> Platform`
+- `Tray::icon() -> String?`
+- `Tray::tooltip() -> String`
+- `Tray::is_visible() -> Bool`
+- `Tray::menu_items() -> Array[TrayMenuItem]`
+
+### Menus and events
+
+- `TrayMenuItem::normal(id~ : String, label~ : String, enabled? : Bool)`
+- `TrayMenuItem::separator()`
+- `TrayMenuItem::checkbox(id~ : String, label~ : String, checked? : Bool, enabled? : Bool)`
+- `TrayMenuItem::submenu(label~ : String, items~ : Array[TrayMenuItem], enabled? : Bool)`
+- `TrayMenuItem::kind() -> TrayMenuItemKind`
+- `TrayEvent::event_name() -> String`
+- `TrayEvent::item_id() -> String?`
+
+Clickable menu ids must be non-empty, globally unique in the menu tree, shorter
+than 128 UTF-8 bytes, and must not contain NUL bytes or surrounding whitespace.
 
 ### Return conventions
 
 - `show()` returns `Ok(true)` when the tray is visible after the call.
 - `hide()` returns `Ok(false)` when the tray is hidden after the call.
 - `set_tooltip()` and `set_icon()` return the current visible state.
+- `set_menu()` returns the current visible state.
+- `drain_events()` returns queued events and clears the queue.
+- Native event queues are bounded; call `pump()` and `drain_events()` regularly
+  so older click or menu events are not dropped under bursty input.
 - `pump()` returns `Ok(false)` only when the native loop asks the caller to stop.
 
 ## Platform Notes
@@ -97,13 +153,14 @@ fn run_tray_demo() -> Unit {
 | Platform | Backend | Notes |
 | --- | --- | --- |
 | Windows | Win32 notification area | Uses a hidden message window plus `Shell_NotifyIconW`. |
-| Linux | GTK 3 + AppIndicator | GUI runtime is loaded dynamically at runtime. |
-| macOS | AppKit `NSStatusItem` | AppKit is loaded through the Objective-C runtime. |
+| Linux | GTK 3 + AppIndicator | GUI runtime is loaded dynamically at runtime; valid v1 menus return unsupported. |
+| macOS | AppKit `NSStatusItem` | AppKit is loaded through the Objective-C runtime; valid v1 menus return unsupported. |
 
 ### Windows
 
 - Works with the normal shell notification area.
 - Uses UTF-8 to UTF-16 conversion internally for tooltips and icon paths.
+- Supports nested context menus and tray click/menu events.
 - `pump()` processes the Win32 message queue and is safe to call in a regular loop.
 
 ### Linux
@@ -142,23 +199,27 @@ loop {
 }
 ```
 
-If your app already owns a native GUI loop, call `pump()` only where it makes
-sense for your host application.
+If your app already owns a native GUI loop, do not call blocking `pump()` from
+the same thread. Integrate non-blocking `pump(blocking=false)` only at a point
+where it is acceptable for the tray library to advance pending native messages.
 
 ## Current Scope
 
-This package currently covers tray icon lifecycle management only:
+This package currently covers tray icon lifecycle management and v1 interaction:
 
 - support detection
 - creation
 - icon updates
 - tooltip updates
 - visibility changes
+- Windows v1 context menu replacement with submenu support
+- Windows v1 click, right-click, double-click, and menu item click events
 - event pumping
 - destruction
 
-It does not yet expose menu items or click callbacks as part of the public
-MoonBit API.
+Linux and macOS keep lifecycle support in v1. `set_menu()` still validates menu
+payloads first; valid menus return a clear unsupported error there until their
+native menu backends are wired deliberately.
 
 ## Testing
 

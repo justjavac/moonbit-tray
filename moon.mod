@@ -1,6 +1,6 @@
 name = "justjavac/tray"
 
-version = "0.1.6"
+version = "0.1.7"
 
 readme = "README.mbt.md"
 
@@ -14,7 +14,8 @@ description = "Cross-platform native tray helpers for MoonBit."
 
 preferred_target = "native"
 
+source = "src"
+
 options(
-  source: "src",
   supported_targets: "+native",
 )

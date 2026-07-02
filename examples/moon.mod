@@ -3,7 +3,7 @@ name = "justjavac/tray-examples"
 version = "0.1.1"
 
 import {
-  "justjavac/tray@0.1.6",
+  "justjavac/tray@0.1.7",
 }
 
 repository = "https://github.com/justjavac/moonbit-tray/tree/main/examples"
@@ -18,6 +18,4 @@ preferred_target = "native"
 
 supported_targets = "+native"
 
-options(
-  source: ".",
-)
+source = "."
