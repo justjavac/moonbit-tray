@@ -44,6 +44,7 @@ pub fn Tray::set_menu(Self, Array[TrayMenuItem]) -> Result[Bool, String]
 pub fn Tray::set_tooltip(Self, String) -> Result[Bool, String]
 pub fn Tray::show(Self, tooltip? : String?) -> Result[Bool, String]
 pub fn Tray::tooltip(Self) -> String
+pub fn Tray::visible(Self) -> Bool
 
 pub(all) enum TrayEvent {
   Click

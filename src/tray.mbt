@@ -264,6 +264,12 @@ pub fn Tray::is_visible(self : Tray) -> Bool {
 }
 
 ///|
+/// Returns whether this tray handle is currently expected to be visible.
+pub fn Tray::visible(self : Tray) -> Bool {
+  self.visible
+}
+
+///|
 /// Returns a clone of the last menu payload accepted by `set_menu()`.
 pub fn Tray::menu_items(self : Tray) -> Array[TrayMenuItem] {
   clone_menu_items(self.menu)

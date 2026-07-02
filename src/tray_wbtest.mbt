@@ -47,17 +47,20 @@ test "simulated tray lifecycle updates visible state" {
   debug_inspect(tray.icon(), content="Some(\"demo.ico\")")
   inspect(tray.tooltip(), content="initial")
   inspect(tray.is_visible(), content="false")
+  inspect(tray.visible(), content="false")
   debug_inspect(tray.show(), content="Ok(true)")
   debug_inspect((tray.visible, tray.tooltip), content="(true, \"initial\")")
   inspect(tray.is_visible(), content="true")
   debug_inspect(tray.set_tooltip("updated"), content="Ok(true)")
+  debug_inspect((tray.tooltip(), tray.visible()), content="(\"updated\", true)")
   debug_inspect((tray.visible, tray.tooltip), content="(true, \"updated\")")
   inspect(tray.tooltip(), content="updated")
   debug_inspect(tray.set_icon(None), content="Ok(true)")
   debug_inspect((tray.visible, tray.icon), content="(true, None)")
   debug_inspect(tray.icon(), content="None")
+  debug_inspect((tray.icon(), tray.visible()), content="(None, true)")
   debug_inspect(tray.hide(), content="Ok(false)")
-  inspect(tray.visible, content="false")
+  inspect(tray.visible(), content="false")
 }
 
 ///|

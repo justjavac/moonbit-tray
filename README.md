@@ -109,6 +109,11 @@ fn run_tray_demo() -> Unit {
 ### Tray lifecycle
 
 - `create(identifier? : String, icon? : String?, tooltip? : String) -> Result[Tray, String]`
+- `Tray::platform() -> Platform`
+- `Tray::identifier() -> String`
+- `Tray::icon() -> String?`
+- `Tray::tooltip() -> String`
+- `Tray::visible() -> Bool`
 - `Tray::show(tooltip? : String?) -> Result[Bool, String]`
 - `Tray::hide() -> Result[Bool, String]`
 - `Tray::set_tooltip(String) -> Result[Bool, String]`
