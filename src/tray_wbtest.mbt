@@ -216,7 +216,10 @@ test "native hidden operations stay usable when backend is available" {
     debug_inspect(tray.set_icon(None), content="Ok(false)")
     match tray.set_menu([TrayMenuItem::normal(id="show", label="Show")]) {
       Ok(visible) => {
-        inspect(current_platform(), content="Windows")
+        match current_platform() {
+          Windows | Linux | MacOS => ()
+          Unknown => fail("expected known native tray platform")
+        }
         inspect(visible, content="false")
       }
       Err(error) => assert_true(error.contains("unsupported"))
