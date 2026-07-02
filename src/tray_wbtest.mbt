@@ -1,4 +1,11 @@
 ///|
+extern "C" fn test_icon_path_ffi() -> Bytes = "moonbit_tray_test_icon_path"
+
+///|
+#borrow(path)
+extern "C" fn test_remove_file_ffi(path : Bytes) -> Bool = "moonbit_tray_test_remove_file"
+
+///|
 /// Builds a simulated tray value for white-box state transition tests.
 fn create_simulated_tray(
   identifier? : String = default_identifier(),
@@ -219,6 +226,43 @@ test "native hidden operations stay usable when backend is available" {
   } else {
     inspect("unsupported", content="unsupported")
   }
+}
+
+///|
+test "native macos custom icon path stays usable" {
+  guard @env.get_env_var("MOONBIT_TRAY_RUN_NATIVE_TESTS") is Some("1") &&
+    current_platform() is MacOS else {
+    inspect("skipped", content="skipped")
+    return ()
+  }
+  if !is_supported() {
+    inspect("unsupported", content="unsupported")
+    return ()
+  }
+  let icon_path = decode_bytes(test_icon_path_ffi()).unwrap_or("")
+  guard !icon_path.is_empty() else { fail("failed to create test tray icon") }
+  let tray = match
+    create(
+      identifier="justjavac.tray.test.icon",
+      icon=Some(icon_path),
+      tooltip="custom icon",
+    ) {
+    Ok(tray) => tray
+    Err(error) => {
+      ignore(test_remove_file_ffi(encode_text(icon_path)))
+      fail(error)
+    }
+  }
+  match tray.icon {
+    Some(path) => assert_eq(path, icon_path)
+    None => fail("custom icon path was not stored")
+  }
+  debug_inspect(tray.set_icon(Some(icon_path)), content="Ok(false)")
+  debug_inspect(tray.show(), content="Ok(true)")
+  debug_inspect(tray.set_icon(Some(icon_path)), content="Ok(true)")
+  debug_inspect(tray.hide(), content="Ok(false)")
+  tray.destroy()
+  ignore(test_remove_file_ffi(encode_text(icon_path)))
 }
 
 ///|
