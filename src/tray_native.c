@@ -1024,6 +1024,18 @@ static void moonbit_tray_macos_send_void_bool(
       arg);
 }
 
+static moonbit_tray_id moonbit_tray_macos_new_pool(void) {
+  return moonbit_tray_macos_send_id(
+      moonbit_tray_macos_class("NSAutoreleasePool"),
+      "new");
+}
+
+static void moonbit_tray_macos_drain_pool(moonbit_tray_id pool) {
+  if (pool != NULL) {
+    moonbit_tray_macos_send_void(pool, "drain");
+  }
+}
+
 static moonbit_tray_id moonbit_tray_macos_string(const char *value) {
   return moonbit_tray_macos_send_id_cstring(
       moonbit_tray_macos_class("NSString"),
@@ -1037,6 +1049,7 @@ static int32_t moonbit_tray_macos_apply_icon(
   const char *icon_text = (const char *)icon;
   moonbit_tray_id button =
       state->button != NULL ? state->button : state->status_item;
+  moonbit_tray_id pool;
   if (button == NULL) {
     moonbit_tray_set_message(
         state->last_error,
@@ -1044,6 +1057,7 @@ static int32_t moonbit_tray_macos_apply_icon(
         "status item button is unavailable");
     return 0;
   }
+  pool = moonbit_tray_macos_new_pool();
   if (icon_text != NULL && icon_text[0] != '\0') {
     moonbit_tray_id path = moonbit_tray_macos_string(icon_text);
     int32_t image_owned = 1;
@@ -1069,6 +1083,7 @@ static int32_t moonbit_tray_macos_apply_icon(
           button,
           "setTitle:",
           moonbit_tray_macos_string(""));
+      moonbit_tray_macos_drain_pool(pool);
       moonbit_tray_clear_message(state->last_error, sizeof(state->last_error));
       return 1;
     }
@@ -1078,6 +1093,7 @@ static int32_t moonbit_tray_macos_apply_icon(
       button,
       "setTitle:",
       moonbit_tray_macos_string("Tray"));
+  moonbit_tray_macos_drain_pool(pool);
   moonbit_tray_clear_message(state->last_error, sizeof(state->last_error));
   return 1;
 }
@@ -1088,10 +1104,12 @@ static void moonbit_tray_macos_apply_tooltip(
   moonbit_tray_id button =
       state->button != NULL ? state->button : state->status_item;
   if (button != NULL) {
+    moonbit_tray_id pool = moonbit_tray_macos_new_pool();
     moonbit_tray_macos_send_void_id(
         button,
         "setToolTip:",
         moonbit_tray_macos_string((const char *)tooltip));
+    moonbit_tray_macos_drain_pool(pool);
   }
 }
 
@@ -1134,7 +1152,20 @@ MOONBIT_FFI_EXPORT int32_t moonbit_tray_is_supported(void) {
 #elif defined(__linux__)
   return moonbit_tray_linux_backend_init();
 #elif defined(__APPLE__)
-  return moonbit_tray_macos_backend_init();
+  if (!moonbit_tray_macos_backend_init()) {
+    return 0;
+  }
+  if (pthread_main_np() == 0) {
+    moonbit_tray_set_message(
+        moonbit_tray_support_message,
+        sizeof(moonbit_tray_support_message),
+        "macOS tray must be created on the main thread");
+    return 0;
+  }
+  moonbit_tray_clear_message(
+      moonbit_tray_support_message,
+      sizeof(moonbit_tray_support_message));
+  return 1;
 #else
   moonbit_tray_set_message(
       moonbit_tray_support_message,
@@ -1297,9 +1328,7 @@ MOONBIT_FFI_EXPORT int64_t moonbit_tray_create(
         "failed to allocate tray state");
     return 0;
   }
-  state->pool = moonbit_tray_macos_send_id(
-      moonbit_tray_macos_class("NSAutoreleasePool"),
-      "new");
+  state->pool = moonbit_tray_macos_new_pool();
   state->app = moonbit_tray_macos_send_id(
       moonbit_tray_macos_class("NSApplication"),
       "sharedApplication");
@@ -1325,10 +1354,6 @@ MOONBIT_FFI_EXPORT int64_t moonbit_tray_create(
       "setHighlightMode:",
       (moonbit_tray_bool)1);
   state->button = moonbit_tray_macos_send_id(state->status_item, "button");
-  moonbit_tray_macos_send_void_bool(
-      state->app,
-      "activateIgnoringOtherApps:",
-      (moonbit_tray_bool)1);
   if (!moonbit_tray_macos_apply_icon(state, icon)) {
     moonbit_tray_set_message(
         moonbit_tray_create_error,
@@ -1762,6 +1787,7 @@ MOONBIT_FFI_EXPORT int32_t moonbit_tray_pump(
   return 1;
 #elif defined(__APPLE__)
   {
+    moonbit_tray_id pool = moonbit_tray_macos_new_pool();
     moonbit_tray_id until = blocking
         ? moonbit_tray_macos_send_id(
               moonbit_tray_macos_class("NSDate"),
@@ -1779,6 +1805,7 @@ MOONBIT_FFI_EXPORT int32_t moonbit_tray_pump(
     if (event != NULL) {
       moonbit_tray_macos_send_void_id(state->app, "sendEvent:", event);
     }
+    moonbit_tray_macos_drain_pool(pool);
     return 1;
   }
 #else
