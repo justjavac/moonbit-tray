@@ -10,12 +10,12 @@ fn log_event(event : @tray.TrayEvent) -> Unit {
 }
 
 ///|
-/// Runs the tray click-events example.
+/// Runs the tray icon and menu event example.
 fn main {
   match
     @tray.create(
       identifier="justjavac.tray.examples.click_events",
-      tooltip="Click the tray icon",
+      tooltip="Use the tray icon or menu",
     ) {
     Ok(tray) => {
       match

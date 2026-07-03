@@ -13,7 +13,7 @@ fn main {
   match
     @tray.create(
       identifier="justjavac.tray.examples.context_menu",
-      tooltip="Right-click for menu",
+      tooltip="Open the tray menu",
     ) {
     Ok(tray) => {
       let items = [

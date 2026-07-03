@@ -21,4 +21,4 @@ Included programs:
 - `application_loop`: demonstrate how to pump the tray backend from an app loop
 - `custom_icon`: pass a custom icon path and optional tooltip from the command line
 - `context_menu`: install a nested context menu and print menu item click events
-- `click_events`: print click, right-click, double-click, and menu events
+- `click_events`: print Windows tray-icon click events and cross-platform menu events

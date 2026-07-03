@@ -26,8 +26,9 @@ This package supports the `native` target only.
 
 - A lightweight tray icon lifecycle API for MoonBit native apps
 - Runtime support checks before you create a tray
-- Windows v1 tray click, right-click, double-click, and menu item click events
+- Windows v1 tray icon click, right-click, and double-click events
 - Cross-platform v1 context menus with normal, separator, checkbox, and submenu items
+- Cross-platform v1 menu item click events
 - Cross-platform lifecycle backends for Windows, Linux, and macOS
 - No compile-time Linux or macOS GUI dependency in the package itself
 
@@ -114,6 +115,8 @@ fn run_tray_demo() -> Unit {
 - `Tray::icon() -> String?`
 - `Tray::tooltip() -> String`
 - `Tray::visible() -> Bool`
+- `Tray::is_visible() -> Bool`
+- `Tray::menu_items() -> Array[TrayMenuItem]`
 - `Tray::show(tooltip? : String?) -> Result[Bool, String]`
 - `Tray::hide() -> Result[Bool, String]`
 - `Tray::set_tooltip(String) -> Result[Bool, String]`
@@ -122,12 +125,6 @@ fn run_tray_demo() -> Unit {
 - `Tray::drain_events() -> Array[TrayEvent]`
 - `Tray::pump(blocking? : Bool) -> Result[Bool, String]`
 - `Tray::destroy() -> Unit`
-- `Tray::identifier() -> String`
-- `Tray::platform() -> Platform`
-- `Tray::icon() -> String?`
-- `Tray::tooltip() -> String`
-- `Tray::is_visible() -> Bool`
-- `Tray::menu_items() -> Array[TrayMenuItem]`
 
 ### Menus and events
 
@@ -165,7 +162,7 @@ than 128 UTF-8 bytes, and must not contain NUL bytes or surrounding whitespace.
 
 - Works with the normal shell notification area.
 - Uses UTF-8 to UTF-16 conversion internally for tooltips and icon paths.
-- Supports nested context menus and tray click/menu events.
+- Supports nested context menus, menu item click events, and tray icon click events.
 - `pump()` processes the Win32 message queue and is safe to call in a regular loop.
 
 ### Linux
@@ -239,9 +236,17 @@ moon coverage analyze -p justjavac/tray -- -f summary
 
 Optional native integration checks can be enabled locally:
 
-```bash
+PowerShell:
+
+```powershell
 $env:MOONBIT_TRAY_RUN_NATIVE_TESTS = "1"
 moon test --target native --filter "native*"
+```
+
+POSIX shells:
+
+```bash
+MOONBIT_TRAY_RUN_NATIVE_TESTS=1 moon test --target native --filter "native*"
 ```
 
 ## License

@@ -99,7 +99,7 @@ pub fn TrayMenuItem::kind(self : TrayMenuItem) -> TrayMenuItemKind {
 }
 
 ///|
-/// Returns the JavaScript event name for a tray event.
+/// Returns the wire-format event name for a tray event.
 pub fn TrayEvent::event_name(self : TrayEvent) -> String {
   match self {
     Click => "click"
@@ -264,7 +264,7 @@ pub fn Tray::is_visible(self : Tray) -> Bool {
 }
 
 ///|
-/// Returns whether this tray handle is currently expected to be visible.
+/// Alias for `is_visible()`.
 pub fn Tray::visible(self : Tray) -> Bool {
   self.visible
 }
@@ -407,8 +407,9 @@ pub fn Tray::set_icon(self : Tray, icon : String?) -> Result[Bool, String] {
 /// values; item ids must be unique across the whole menu tree so click events
 /// can be routed reliably.
 ///
-/// Successful calls return the current visible state. Unsupported native
-/// platforms or invalid menu payloads return `Err(message)`.
+/// Successful calls return the current visible state. Unsupported operating
+/// systems, missing native menu backends, or invalid menu payloads return
+/// `Err(message)`.
 pub fn Tray::set_menu(
   self : Tray,
   items : Array[TrayMenuItem],
