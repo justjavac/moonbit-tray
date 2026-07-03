@@ -27,7 +27,7 @@ This package supports the `native` target only.
 - A lightweight tray icon lifecycle API for MoonBit native apps
 - Runtime support checks before you create a tray
 - Windows v1 tray click, right-click, double-click, and menu item click events
-- Windows v1 context menus with normal, separator, checkbox, and submenu items
+- Cross-platform v1 context menus with normal, separator, checkbox, and submenu items
 - Cross-platform lifecycle backends for Windows, Linux, and macOS
 - No compile-time Linux or macOS GUI dependency in the package itself
 
@@ -158,8 +158,8 @@ than 128 UTF-8 bytes, and must not contain NUL bytes or surrounding whitespace.
 | Platform | Backend | Notes |
 | --- | --- | --- |
 | Windows | Win32 notification area | Uses a hidden message window plus `Shell_NotifyIconW`. |
-| Linux | GTK 3 + AppIndicator | GUI runtime is loaded dynamically at runtime; valid v1 menus return unsupported. |
-| macOS | AppKit `NSStatusItem` | AppKit is loaded through the Objective-C runtime; valid v1 menus return unsupported. |
+| Linux | GTK 3 + AppIndicator | GUI runtime is loaded dynamically at runtime. |
+| macOS | AppKit `NSStatusItem` | AppKit is loaded through the Objective-C runtime. |
 
 ### Windows
 
@@ -174,12 +174,14 @@ than 128 UTF-8 bytes, and must not contain NUL bytes or surrounding whitespace.
 - Requires either `libayatana-appindicator3` or `libappindicator3` at runtime.
 - The package does not hard-link those libraries at build time; it probes them at runtime.
 - Tooltip updates are mapped to the AppIndicator title because Linux tray APIs do not expose one consistent tooltip concept.
+- Supports nested context menus and menu item click events.
 
 ### macOS
 
 - Uses `NSStatusBar` / `NSStatusItem`.
 - Tray creation must happen on the main thread.
 - If no icon path is supplied, the backend falls back to a simple text title.
+- Supports nested context menus and menu item click events.
 
 ## Event Loop Guidance
 
@@ -217,14 +219,15 @@ This package currently covers tray icon lifecycle management and v1 interaction:
 - icon updates
 - tooltip updates
 - visibility changes
-- Windows v1 context menu replacement with submenu support
-- Windows v1 click, right-click, double-click, and menu item click events
+- cross-platform v1 context menu replacement with submenu support
+- cross-platform v1 menu item click events
+- Windows v1 click, right-click, and double-click tray events
 - event pumping
 - destruction
 
-Linux and macOS keep lifecycle support in v1. `set_menu()` still validates menu
-payloads first; valid menus return a clear unsupported error there until their
-native menu backends are wired deliberately.
+Linux AppIndicator exposes menu item activation but not a consistent tray icon
+click stream, so `Click`, `RightClick`, and `DoubleClick` events are currently
+Windows-only.
 
 ## Testing
 
