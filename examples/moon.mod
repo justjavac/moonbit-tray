@@ -4,6 +4,7 @@ version = "0.1.1"
 
 import {
   "justjavac/tray@0.1.7",
+  "moonbitlang/async@0.19.1",
 }
 
 repository = "https://github.com/justjavac/moonbit-tray/tree/main/examples"
