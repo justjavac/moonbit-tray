@@ -10,8 +10,17 @@ fn print_event(event : @tray.TrayEvent) -> Unit {
 }
 
 ///|
+/// Waits briefly between non-blocking pump ticks in this demo program.
+fn pause(milliseconds : Int) -> Unit {
+  let until = @env.now() + milliseconds.to_uint64()
+  while @env.now() < until {
+    ()
+  }
+}
+
+///|
 /// Runs one non-blocking tray event-loop tick.
-async fn poll_step(tray : @tray.Tray) -> Result[Bool, String] {
+fn poll_step(tray : @tray.Tray) -> Result[Bool, String] {
   match tray.pump(blocking=false) {
     Err(error) => return Err("pump failed: " + error)
     Ok(false) => return Ok(false)
@@ -24,13 +33,13 @@ async fn poll_step(tray : @tray.Tray) -> Result[Bool, String] {
       running = false
     }
   }
-  @async.sleep(16)
+  pause(16)
   Ok(running)
 }
 
 ///|
 /// Runs the non-blocking event drain example.
-async fn main {
+fn main {
   match
     @tray.create(
       identifier="justjavac.tray.examples.nonblocking_events",
