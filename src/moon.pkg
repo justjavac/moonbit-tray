@@ -1,8 +1,16 @@
 import {
+  "moonbitlang/core/debug",
   "moonbitlang/core/encoding/utf8",
-  "moonbitlang/core/env",
   "moonbitlang/core/json",
 }
+
+import {
+  "moonbitlang/core/env",
+} for "test"
+
+import {
+  "moonbitlang/core/env",
+} for "wbtest"
 
 supported_targets = "native"
 

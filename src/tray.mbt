@@ -27,6 +27,10 @@ pub(all) enum TrayMenuItemKind {
   Submenu
 } derive(Debug, Eq)
 
+pub extend TrayMenuItemKind with Eq::{equal, not_equal}
+
+pub extend TrayMenuItemKind with @debug.Debug::{to_repr}
+
 ///|
 /// One tray context-menu item.
 ///
@@ -41,6 +45,10 @@ pub(all) enum TrayMenuItem {
   Submenu(label~ : String, items~ : Array[TrayMenuItem], enabled~ : Bool)
 } derive(Debug, Eq)
 
+pub extend TrayMenuItem with Eq::{equal, not_equal}
+
+pub extend TrayMenuItem with @debug.Debug::{to_repr}
+
 ///|
 /// Event emitted by the native tray backend.
 pub(all) enum TrayEvent {
@@ -49,6 +57,10 @@ pub(all) enum TrayEvent {
   DoubleClick
   MenuItemClick(String)
 } derive(Debug, Eq)
+
+pub extend TrayEvent with Eq::{equal, not_equal}
+
+pub extend TrayEvent with @debug.Debug::{to_repr}
 
 ///|
 /// Builds a normal clickable menu item.
@@ -134,7 +146,7 @@ pub fn TrayEvent::item_id(self : TrayEvent) -> String? {
 /// # Example
 /// ```mbt check
 /// test "is_supported probes capability without creating a tray" {
-///   let _ : Bool = is_supported()
+///   let _ : Bool = @tray.is_supported()
 /// }
 /// ```
 pub fn is_supported() -> Bool {

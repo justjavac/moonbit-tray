@@ -30,7 +30,7 @@ fn main {
       tooltip~,
     ) {
     Ok(tray) => {
-      println("created tray with icon=\{to_repr(icon)}")
+      println("created tray with icon=\{Repr(icon)}")
       print_result("show", tray.show())
       match tray.pump() {
         Ok(true) => println("pump: ok")
