@@ -27,8 +27,10 @@ pub(all) enum TrayMenuItemKind {
   Submenu
 } derive(Debug, Eq)
 
+///|
 pub extend TrayMenuItemKind with Eq::{equal, not_equal}
 
+///|
 pub extend TrayMenuItemKind with @debug.Debug::{to_repr}
 
 ///|
@@ -45,8 +47,10 @@ pub(all) enum TrayMenuItem {
   Submenu(label~ : String, items~ : Array[TrayMenuItem], enabled~ : Bool)
 } derive(Debug, Eq)
 
+///|
 pub extend TrayMenuItem with Eq::{equal, not_equal}
 
+///|
 pub extend TrayMenuItem with @debug.Debug::{to_repr}
 
 ///|
@@ -58,8 +62,10 @@ pub(all) enum TrayEvent {
   MenuItemClick(String)
 } derive(Debug, Eq)
 
+///|
 pub extend TrayEvent with Eq::{equal, not_equal}
 
+///|
 pub extend TrayEvent with @debug.Debug::{to_repr}
 
 ///|
