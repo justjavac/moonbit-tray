@@ -11,7 +11,7 @@ fn print_event(event : @tray.TrayEvent) -> Unit {
 
 ///|
 /// Waits briefly between non-blocking pump ticks in this demo program.
-fn pause(milliseconds : Int) -> Unit {
+fn pause(milliseconds : Int32) -> Unit {
   let until = @env.now() + milliseconds.to_uint64()
   while @env.now() < until {
     ()
